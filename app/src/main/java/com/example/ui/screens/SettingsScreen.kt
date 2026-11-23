@@ -66,6 +66,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.DiscordApiService
 import com.example.data.DiscordEnvSettingsState
+import com.example.ui.components.MasterHubConnectionPanel
 import com.example.ui.theme.ArcaneViolet
 import com.example.ui.theme.BorderSubtle
 import com.example.ui.theme.CrimsonAlert
@@ -79,6 +80,7 @@ import com.example.ui.theme.TextSecondary
 @Composable
 fun SettingsScreen(
     discordEnvSettings: DiscordEnvSettingsState,
+    signedInAccountLabel: String = "Signed-In Commander",
     onToggleDiscordIntegration: (Boolean) -> Unit,
     onSaveDiscordEnvCredentials: (
         botToken: String,
@@ -95,9 +97,6 @@ fun SettingsScreen(
     var integrationEnabled by rememberSaveable(discordEnvSettings.integrationEnabled) {
         mutableStateOf(discordEnvSettings.integrationEnabled)
     }
-    var botTokenInput by rememberSaveable(discordEnvSettings.botToken) {
-        mutableStateOf(discordEnvSettings.botToken)
-    }
     var webhookUrlInput by rememberSaveable(discordEnvSettings.webhookUrl) {
         mutableStateOf(discordEnvSettings.webhookUrl)
     }
@@ -109,14 +108,12 @@ fun SettingsScreen(
     }
     var showRawEnvParser by rememberSaveable { mutableStateOf(false) }
 
-    var revealBotToken by rememberSaveable { mutableStateOf(false) }
     var revealWebhookUrl by rememberSaveable { mutableStateOf(false) }
     var revealEnvPreview by rememberSaveable { mutableStateOf(false) }
     var copiedEnvNotice by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(discordEnvSettings) {
         integrationEnabled = discordEnvSettings.integrationEnabled
-        botTokenInput = discordEnvSettings.botToken
         webhookUrlInput = discordEnvSettings.webhookUrl
         botClientIdInput = discordEnvSettings.botClientId
     }
@@ -126,7 +123,7 @@ fun SettingsScreen(
 
     val previewState = discordEnvSettings.copy(
         integrationEnabled = integrationEnabled,
-        botToken = botTokenInput,
+        botToken = "",
         webhookUrl = webhookUrlInput,
         botClientId = botClientIdInput
     )
@@ -138,7 +135,14 @@ fun SettingsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Master Discord Bot Integration Toggle & Live Status Card
+        // 0. Connected to Project MPV RP Master Hub (nexus-app.json, Discord Account-Lock, 20-Color Pie & Card Maker Export)
+        item(key = "master_hub_connection_panel") {
+            MasterHubConnectionPanel(
+                signedInAccountLabel = signedInAccountLabel
+            )
+        }
+
+        // 1. Master Discord Webhook Integration Toggle & Live Status Card
         item {
             Card(
                 shape = RoundedCornerShape(20.dp),
@@ -232,11 +236,10 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = buildString {
-                                    append("DISCORD_BOT_TOKEN: ")
-                                    append(if (discordEnvSettings.envBotTokenDetected) "Detected in .env" else "Placeholder/Unset in .env")
-                                    append(" • DISCORD_WEBHOOK_URL: ")
-                                    append(if (discordEnvSettings.envWebhookUrlDetected) "Detected in .env" else "Placeholder/Unset in .env")
+                                text = "DISCORD_WEBHOOK_URL: " + if (discordEnvSettings.envWebhookUrlDetected) {
+                                    "Detected in .env"
+                                } else {
+                                    "Placeholder/Unset in .env (Bot Tokens strictly prohibited client-side)"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
@@ -326,12 +329,12 @@ fun SettingsScreen(
                             )
                             Column {
                                 Text(
-                                    text = "Discord .env Credentials (API Token & Webhook URL)",
+                                    text = "Discord Webhook Bridge & Public OAuth2 Client ID",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Maps directly to DISCORD_BOT_TOKEN and DISCORD_WEBHOOK_URL in .env",
+                                    text = "Maps to DISCORD_WEBHOOK_URL (zero client-side Bot Tokens or client_secret)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )
@@ -353,11 +356,7 @@ fun SettingsScreen(
                                 rawDotEnvSnippetInput = raw
                                 raw.lineSequence().forEach { line ->
                                     val trimmed = line.trim()
-                                    if (trimmed.startsWith("DISCORD_BOT_TOKEN=")) {
-                                        botTokenInput = trimmed.substringAfter("DISCORD_BOT_TOKEN=")
-                                            .trim()
-                                            .removeSurrounding("\"")
-                                    } else if (trimmed.startsWith("DISCORD_WEBHOOK_URL=")) {
+                                    if (trimmed.startsWith("DISCORD_WEBHOOK_URL=")) {
                                         webhookUrlInput = trimmed.substringAfter("DISCORD_WEBHOOK_URL=")
                                             .trim()
                                             .removeSurrounding("\"")
@@ -369,59 +368,18 @@ fun SettingsScreen(
                                 }
                             },
                             label = {
-                                Text("Paste .env Lines (DISCORD_BOT_TOKEN=... & DISCORD_WEBHOOK_URL=...)")
+                                Text("Paste .env Lines (DISCORD_WEBHOOK_URL=...)")
                             },
                             placeholder = {
-                                Text("DISCORD_BOT_TOKEN=MT...\nDISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...")
+                                Text("DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...")
                             },
-                            minLines = 3,
-                            maxLines = 5,
+                            minLines = 2,
+                            maxLines = 4,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("settings_raw_dotenv_input")
                         )
                     }
-
-                    // DISCORD_BOT_TOKEN input
-                    OutlinedTextField(
-                        value = botTokenInput,
-                        onValueChange = { botTokenInput = it.trim() },
-                        enabled = integrationEnabled,
-                        label = { Text("DISCORD_BOT_TOKEN (Discord Bot API v10 Token)") },
-                        placeholder = { Text("YOUR_DISCORD_BOT_TOKEN") },
-                        singleLine = true,
-                        visualTransformation = if (revealBotToken) {
-                            VisualTransformation.None
-                        } else {
-                            PasswordVisualTransformation()
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        trailingIcon = {
-                            IconButton(
-                                onClick = { revealBotToken = !revealBotToken },
-                                modifier = Modifier.testTag("toggle_bot_token_visibility_button")
-                            ) {
-                                Icon(
-                                    imageVector = if (revealBotToken) {
-                                        Icons.Default.VisibilityOff
-                                    } else {
-                                        Icons.Default.Visibility
-                                    },
-                                    contentDescription = if (revealBotToken) "Hide Bot Token" else "Show Bot Token"
-                                )
-                            }
-                        },
-                        supportingText = {
-                            Text(
-                                text = "Used for joining Discord servers (GET /users/@me/guilds), reviewing channel chat history, and posting Bot embeds.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextSecondary
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("settings_bot_token_input")
-                    )
 
                     // DISCORD_WEBHOOK_URL input
                     OutlinedTextField(
@@ -502,7 +460,7 @@ fun SettingsScreen(
                         Button(
                             onClick = {
                                 onSaveDiscordEnvCredentials(
-                                    botTokenInput,
+                                    "",
                                     webhookUrlInput,
                                     botClientIdInput,
                                     integrationEnabled
@@ -516,17 +474,17 @@ fun SettingsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Save,
-                                contentDescription = "Save .env Settings",
+                                contentDescription = "Save Webhook Settings",
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Save & Apply .env Credentials", fontWeight = FontWeight.Bold)
+                            Text("Save Webhook Settings", fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
                             onClick = {
                                 onSaveDiscordEnvCredentials(
-                                    botTokenInput,
+                                    "",
                                     webhookUrlInput,
                                     botClientIdInput,
                                     integrationEnabled

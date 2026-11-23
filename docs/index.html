@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0D121F" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="NexusTCG Engine" />
+  <title>NexusTCG Engine — Web Portal &amp; Platform Router</title>
+  <style>
+    :root {
+      --bg: #0b101d;
+      --surface: #131b2e;
+      --surface-alt: #1a2540;
+      --border: #28375a;
+      --text: #eef3ff;
+      --muted: #9eb0d6;
+      --accent: #4cc9f0;
+      --accent-2: #7b61ff;
+      --gold: #f5c451;
+      --ok: #3ddc97;
+      --warn: #ffb703;
+      --danger: #ff5d73;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: radial-gradient(circle at top right, #18264a 0%, var(--bg) 52%);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 20px 16px 56px;
+    }
+    header.hero {
+      background: linear-gradient(135deg, rgba(76, 201, 240, 0.14), rgba(123, 97, 255, 0.16));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 18px;
+    }
+    .hero-top {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    h1 { margin: 0; font-size: 1.65rem; letter-spacing: -0.02em; }
+    h2 { margin: 0 0 10px; font-size: 1.15rem; }
+    h3 { margin: 0 0 8px; font-size: 0.98rem; color: var(--accent); }
+    p { margin: 0 0 10px; color: var(--muted); font-size: 0.94rem; }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .badge.ok { border-color: rgba(61, 220, 151, 0.45); color: var(--ok); }
+    .badge.warn { border-color: rgba(255, 183, 3, 0.45); color: var(--warn); }
+    .badge.accent { border-color: rgba(76, 201, 240, 0.45); color: var(--accent); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .btn.primary {
+      background: linear-gradient(135deg, #2b86d6, #5d4be2);
+      border-color: transparent;
+      color: #fff;
+    }
+    .btn.success {
+      background: linear-gradient(135deg, #1b8a5a, #24a873);
+      border-color: transparent;
+      color: #fff;
+    }
+    .btn.gold {
+      background: rgba(245, 196, 81, 0.16);
+      border-color: rgba(245, 196, 81, 0.55);
+      color: var(--gold);
+    }
+    .btn.danger {
+      background: rgba(255, 93, 115, 0.14);
+      border-color: rgba(255, 93, 115, 0.45);
+      color: var(--danger);
+    }
+    .btn.small { min-height: 36px; padding: 6px 12px; font-size: 0.82rem; }
+    .status-box {
+      background: #0d1424;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 10px;
+      word-break: break-word;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    label { font-size: 0.82rem; color: var(--muted); font-weight: 600; }
+    input[type="text"], input[type="url"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      background: #0c1221;
+      color: var(--text);
+      font-size: 0.88rem;
+    }
+    .asset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .asset-item {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 10px;
+      background: #0f1628;
+      border: 1px solid var(--border);
+    }
+    .asset-meta { font-size: 0.8rem; color: var(--muted); }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 12px 0;
+    }
+    .tab-btn {
+      padding: 7px 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0f1628;
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: rgba(76, 201, 240, 0.18);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .pie-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .color-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0f1628;
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+    .color-chip.selected {
+      border-color: var(--gold);
+      background: rgba(245, 196, 81, 0.16);
+      box-shadow: 0 0 0 1px rgba(245, 196, 81, 0.35);
+    }
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+    .pip-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      max-height: 320px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .pip-card {
+      padding: 10px;
+      border-radius: 9px;
+      background: #0e1526;
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+    }
+    .pip-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .omni-card {
+      background: linear-gradient(135deg, rgba(245, 196, 81, 0.14), rgba(76, 201, 240, 0.14), rgba(217, 70, 239, 0.14));
+      border: 1px solid rgba(245, 196, 81, 0.55);
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 10px;
+    }
+    .hidden { display: none !important; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.83rem;
+      color: #cfe6ff;
+    }
+    footer {
+      margin-top: 26px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div class="hero-top">
+        <div>
+          <h1>NexusTCG Engine — Web Portal &amp; Platform Router</h1>
+          <p>Zero-build public launcher for <code>Summer-Warrior/Tcg-game-engine-test</code>, connected to Project MPV RP Master Hub &amp; MPV TCG Card Maker.</p>
+        </div>
+        <div class="btn-row" style="margin-top:0;">
+          <a class="btn primary" id="returnHubBtn" href="https://summer-warrior.github.io/Project-MPV-RP-Master-Hub/" rel="noopener noreferrer">Return to Master Hub</a>
+        </div>
+      </div>
+      <div class="badge-row" id="platformBadges">
+        <span class="badge accent" id="detectedPlatformBadge">Detecting platform...</span>
+        <span class="badge ok">Public Distribution: GitHub Releases &amp; Web</span>
+        <span class="badge" id="hubSyncBadge">Hub Bridge: Ready</span>
+        <span class="badge warn" id="discordLockBadge">Discord Account-Lock: Checking...</span>
+      </div>
+    </header>
+
+    <!-- Discord Account-Lock Gate Panel (OAuth2 Implicit Grant ONLY — Zero Bot Token / client_secret) -->
+    <section class="card" id="discordGateCard" style="margin-bottom:16px;">
+      <h2>Discord Account-Lock Verification (OAuth2 Only — Zero Bot Tokens)</h2>
+      <p id="discordGateDesc">
+        Enforces <code>requiredDiscordLock</code> from <code>nexus-app.json</code> using Discord OAuth2 Implicit Grant (<code>response_type=token</code>, scopes <code>identify guilds</code>). Access tokens live strictly in page memory and are never persisted to storage.
+      </p>
+      <div class="grid" style="margin-bottom:0;">
+        <div class="input-group">
+          <label for="discordClientIdInput">Discord Application Client ID (Public OAuth2 Client ID)</label>
+          <input type="text" id="discordClientIdInput" placeholder="e.g. 1234567890123456789" inputmode="numeric" />
+        </div>
+        <div class="input-group">
+          <label for="gatekeeperUrlInput">Optional Gatekeeper Worker URL (for Guild Role Verification)</label>
+          <input type="url" id="gatekeeperUrlInput" placeholder="https://your-worker.example.workers.dev/verify" />
+        </div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="discordSignInBtn">Sign in with Discord (OAuth2)</button>
+        <button type="button" class="btn danger hidden" id="discordSignOutBtn">Clear Session</button>
+        <button type="button" class="btn" id="copyManifestBtn">Copy nexus-app.json</button>
+      </div>
+      <div class="status-box" id="discordStatusBox">Status: Waiting for Discord OAuth2 sign-in to verify account access.</div>
+    </section>
+
+    <!-- Main Platform Router Grid -->
+    <div class="grid">
+      <!-- Installable Platform Card (Android / Desktop when real release asset exists) -->
+      <section class="card" id="nativeInstallCard">
+        <h2 id="nativeCardTitle">GitHub Releases — Direct App Download</h2>
+        <p id="nativeCardSubtitle">Querying live release assets from GitHub Releases API (<code>X-GitHub-Api-Version: 2026-03-10</code>). Only verified existing release binaries are shown.</p>
+        <div class="btn-row">
+          <a class="btn success" id="openInstalledAppBtn" href="nexus-tcg-engine://open">Try Opening Installed App</a>
+          <button type="button" class="btn" id="refreshReleasesBtn">Refresh GitHub Releases</button>
+        </div>
+        <div class="asset-list" id="releaseAssetList"></div>
+        <div class="status-box" id="releaseStatusBox">Loading latest release metadata...</div>
+      </section>
+
+      <!-- Browser-Only & Web Tabletop Fallback Card -->
+      <section class="card" id="webPortalCard">
+        <h2>Browser &amp; Web Tabletop Portal</h2>
+        <p id="webPortalDesc">
+          On iOS, Chromebook, Discord in-app browsers, or any OS without a native binary in GitHub Releases, launch the Master Hub Web Tabletop directly in your browser.
+        </p>
+        <div class="btn-row">
+          <a class="btn primary" href="https://summer-warrior.github.io/Project-MPV-RP-Master-Hub/" rel="noopener noreferrer">Launch Master Hub Web Tabletop</a>
+          <a class="btn" href="https://github.com/Summer-Warrior/MPV-TCG-Card-Making-Software-Updated" target="_blank" rel="noopener noreferrer">Open Card Maker Repo</a>
+          <a class="btn" href="https://github.com/Summer-Warrior/Asset-Holding-Software" target="_blank" rel="noopener noreferrer">Open Asset Vault</a>
+        </div>
+        <div class="status-box" id="pwaGuideBox">
+          <strong>PWA "Add to Home Screen":</strong>
+          <span id="pwaInstructionsText">Use your browser's Share or Menu button and select "Add to Home Screen" / "Install App" for full-screen tabletop access.</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- 20-Color Pie Full Progression (Layers 0-20 + {C} + {Ω} Omnichroma) -->
+    <section class="card" id="colorPieSection">
+      <h2>20-Color Pie — Full Progression (Layers 0 to 20 &amp; Unique Omni Pip {Ω})</h2>
+      <p>
+        <strong>No Default Selected</strong> &bull; <strong>Always Showing All Pips Unless Filtered</strong> &bull; Layers 1&ndash;19 Follow Strict Diamond / Option B Format &bull; Layer 20 Unique Omni Pip <code>{Ω}</code>. Click any colors (1&ndash;20) to build a live custom layer and filter matching entries across all layers.
+      </p>
+      <div class="btn-row" style="margin-top:6px;">
+        <button type="button" class="btn gold small" id="selectAll20Btn">Select All 20 (Preview {Ω})</button>
+        <button type="button" class="btn small" id="resetPieBtn">Reset All Selections</button>
+        <span class="badge accent" id="pieSelectionSummary">Pie Selection: None — Showing All Pips</span>
+      </div>
+
+      <div class="pie-grid" id="twentyColorWheel"></div>
+
+      <div class="tabs" id="layerTabs" role="tablist">
+        <button type="button" class="tab-btn active" data-layer="layer01">Layer 0&ndash;1 (21)</button>
+        <button type="button" class="tab-btn" data-layer="layer2">Layer 2 (190 Pairs)</button>
+        <button type="button" class="tab-btn" data-layer="layer3">Layer 3 (17 Curated Trios)</button>
+        <button type="button" class="tab-btn" data-layer="layer4to17">Layers 4&ndash;17</button>
+        <button type="button" class="tab-btn" data-layer="layer18">Layer 18 (All Minus Pair)</button>
+        <button type="button" class="tab-btn" data-layer="layer19">Layer 19 (All 20)</button>
+        <button type="button" class="tab-btn" data-layer="layer20">Layer 20 {Ω}</button>
+      </div>
+
+      <div class="tabs hidden" id="layer2SubTabs">
+        <button type="button" class="tab-btn active" data-pair-cat="ALL">All (190)</button>
+        <button type="button" class="tab-btn" data-pair-cat="ALLIED_ANCHORS">Allied Anchors (5)</button>
+        <button type="button" class="tab-btn" data-pair-cat="ENEMY_ANCHORS">Enemy Anchors (5)</button>
+        <button type="button" class="tab-btn" data-pair-cat="OPPOSITES_180">180&deg; Opposites (10)</button>
+        <button type="button" class="tab-btn" data-pair-cat="ANCHOR_BRIDGE">Anchor&ndash;Bridge (75)</button>
+        <button type="button" class="tab-btn" data-pair-cat="BRIDGE_BRIDGE">Bridge&ndash;Bridge (105)</button>
+      </div>
+
+      <div id="layerContentArea"></div>
+    </section>
+
+    <footer>
+      NexusTCG Engine &bull; Public Distribution via GitHub Releases &amp; Web Only &bull; Non-Locked Client Bridge v1.0.0
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const GITHUB_API_VERSION = "2026-03-10";
+      const RELEASES_API_URL = "https://api.github.com/repos/Summer-Warrior/Tcg-game-engine-test/releases/latest";
+      const MASTER_HUB_WEB_URL = "https://summer-warrior.github.io/Project-MPV-RP-Master-Hub/";
+
+      const NEXUS_APP_MANIFEST = {
+        repo: "Summer-Warrior/Tcg-game-engine-test",
+        displayName: "NexusTCG Engine",
+        category: "TCG_CLIENT",
+        distributionPolicy: "GITHUB_RELEASES_PUBLIC_PLAY_STORE_PERSONAL_ONLY",
+        androidPackageName: "com.aistudio.nexustcg.vxqrmk",
+        deepLinkScheme: "nexus-tcg-engine://open",
+        githubLatestReleaseApi: RELEASES_API_URL,
+        githubReleaseTag: "latest",
+        installablePlatforms: ["android"],
+        browserOnlyFallback: true,
+        webUrl: "https://summer-warrior.github.io/Tcg-game-engine-test/",
+        linkedMasterHub: "Summer-Warrior/Project-MPV-RP-Master-Hub",
+        masterHubWebUrl: MASTER_HUB_WEB_URL,
+        masterHubDeepLinkScheme: "nexus-master-hub://open",
+        masterHubAndroidPackage: "",
+        linkedAssetVault: "Summer-Warrior/Asset-Holding-Software",
+        linkedCardMaker: "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
+        upstreamSourceLock: false,
+        bridgeSchemaVersion: "1.0.0",
+        requiredDiscordLock: {
+          mode: "DISCORD_SIGNED_IN",
+          guildId: "",
+          allowedRoleIds: [],
+          allowedUserIds: []
+        }
+      };
+
+      // Memory-only Discord OAuth2 state (NEVER written to localStorage/sessionStorage)
+      let discordAccessToken = null;
+      let discordUser = null;
+      let discordGuildIds = [];
+      let pendingOAuthNonce = null;
+
+      // 20-Color Pie canonical ordered wheel (5 MTG Anchors at indices 0,4,8,12,16 + 15 Bridges)
+      // Strictly color identity & pip syntax only — ZERO invented philosophies, emotions, or moral alignments.
+      const WHEEL_COLORS = [
+        { idx: 0, code: "W", name: "White", anchor: true, hex: "#F8F5E6" },
+        { idx: 1, code: "Iv", name: "Ivory", anchor: false, hex: "#E6DFC5" },
+        { idx: 2, code: "Cy", name: "Cyan", anchor: false, hex: "#4CC9F0" },
+        { idx: 3, code: "Az", name: "Azure", anchor: false, hex: "#3A86FF" },
+        { idx: 4, code: "U", name: "Blue", anchor: true, hex: "#1D4ED8" },
+        { idx: 5, code: "In", name: "Indigo", anchor: false, hex: "#4338CA" },
+        { idx: 6, code: "Vi", name: "Violet", anchor: false, hex: "#7C3AED" },
+        { idx: 7, code: "Ob", name: "Obsidian", anchor: false, hex: "#3F3A4D" },
+        { idx: 8, code: "B", name: "Black", anchor: true, hex: "#1E1B24" },
+        { idx: 9, code: "Cr", name: "Crimson", anchor: false, hex: "#9F1239" },
+        { idx: 10, code: "Mg", name: "Magenta", anchor: false, hex: "#DB2777" },
+        { idx: 11, code: "Sc", name: "Scarlet", anchor: false, hex: "#E11D48" },
+        { idx: 12, code: "R", name: "Red", anchor: true, hex: "#DC2626" },
+        { idx: 13, code: "Or", name: "Orange", anchor: false, hex: "#EA580C" },
+        { idx: 14, code: "Am", name: "Amber", anchor: false, hex: "#D97706" },
+        { idx: 15, code: "Ch", name: "Chartreuse", anchor: false, hex: "#84CC16" },
+        { idx: 16, code: "G", name: "Green", anchor: true, hex: "#16A34A" },
+        { idx: 17, code: "Ja", name: "Jade", anchor: false, hex: "#059669" },
+        { idx: 18, code: "Te", name: "Teal", anchor: false, hex: "#0D9488" },
+        { idx: 19, code: "Aq", name: "Aqua", anchor: false, hex: "#06B6D4" }
+      ];
+
+      // Zero default selected on load
+      const selectedColorCodes = new Set();
+      let activeLayerTab = "layer01";
+      let activePairCategory = "ALL";
+
+      function detectPlatform() {
+        const ua = navigator.userAgent || "";
+        const isDiscordInApp = /Discord/i.test(ua);
+        const isAndroid = /Android/i.test(ua);
+        const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        const isChromebook = /CrOS/i.test(ua);
+        const isWindows = /Windows/i.test(ua);
+        const isMac = /Macintosh|Mac OS X/i.test(ua) && !isIOS;
+        const isLinux = /Linux/i.test(ua) && !isAndroid && !isChromebook;
+
+        if (isDiscordInApp) {
+          return { key: "discord", label: "Discord In-App Browser (Browser-Only)", installable: false, browserOnly: true };
+        }
+        if (isAndroid) {
+          return { key: "android", label: "Android (Installable APK + Deep Link)", installable: true, browserOnly: false };
+        }
+        if (isIOS) {
+          return { key: "ios", label: "iOS / iPadOS (Browser-Only Web Tabletop)", installable: false, browserOnly: true };
+        }
+        if (isChromebook) {
+          return { key: "chromebook", label: "Chromebook / ChromeOS (Browser-Only Web Tabletop)", installable: false, browserOnly: true };
+        }
+        if (isWindows || isMac || isLinux) {
+          const osLabel = isWindows ? "Windows" : (isMac ? "macOS" : "Linux");
+          return { key: "desktop", label: osLabel + " Desktop (Web Portal / Release Check)", installable: false, browserOnly: true };
+        }
+        return { key: "web", label: "Web Browser (Browser-Only)", installable: false, browserOnly: true };
+      }
+
+      function isSafeDownloadUrl(url) {
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol !== "https:") return false;
+          return parsed.hostname === "github.com" ||
+            parsed.hostname.endsWith(".githubusercontent.com") ||
+            parsed.hostname === "api.github.com";
+        } catch (_err) {
+          return false;
+        }
+      }
+
+      function formatBytes(bytes) {
+        if (!Number.isFinite(bytes) || bytes <= 0) return "Unknown size";
+        const mb = bytes / (1024 * 1024);
+        return mb >= 1 ? mb.toFixed(2) + " MB" : (bytes / 1024).toFixed(1) + " KB";
+      }
+
+      function clearElement(el) {
+        while (el.firstChild) el.removeChild(el.firstChild);
+      }
+
+      async function loadLatestReleaseAssets(platformInfo) {
+        const assetListEl = document.getElementById("releaseAssetList");
+        const statusEl = document.getElementById("releaseStatusBox");
+        clearElement(assetListEl);
+        statusEl.textContent = "Fetching live release assets from GitHub Releases API...";
+
+        try {
+          const resp = await fetch(RELEASES_API_URL, {
+            method: "GET",
+            headers: {
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": GITHUB_API_VERSION
+            }
+          });
+
+          if (!resp.ok) {
+            statusEl.textContent = resp.status === 404
+              ? "No published GitHub Release found yet. Push to main or run the Auto-Release APK workflow to publish NexusTCG-Engine-latest.apk. Use the Web Tabletop portal meanwhile."
+              : "GitHub Releases API returned HTTP " + resp.status + ". Use the Web Tabletop portal below.";
+            return;
+          }
+
+          const release = await resp.json();
+          const assets = Array.isArray(release.assets) ? release.assets : [];
+          const validAssets = assets.filter(function (a) {
+            return a && typeof a.name === "string" && typeof a.browser_download_url === "string" && isSafeDownloadUrl(a.browser_download_url);
+          });
+
+          // Filter real binaries relevant to platform (never render broken or unsupported buttons)
+          const matchingAssets = validAssets.filter(function (a) {
+            const lower = a.name.toLowerCase();
+            if (platformInfo.key === "android") {
+              return lower.endsWith(".apk");
+            }
+            if (platformInfo.key === "desktop") {
+              return lower.endsWith(".exe") || lower.endsWith(".msi") || lower.endsWith(".dmg") || lower.endsWith(".appimage") || lower.endsWith(".deb");
+            }
+            return false;
+          });
+
+          if (matchingAssets.length === 0) {
+            statusEl.textContent = platformInfo.key === "android"
+              ? "Release " + (release.tag_name || "latest") + " exists, but no .apk binary asset was found yet. Launch the Master Hub Web Tabletop below."
+              : "No native desktop binary exists in GitHub Releases (" + (release.tag_name || "latest") + "). Use the browser-based Web Tabletop portal.";
+            return;
+          }
+
+          matchingAssets.forEach(function (asset) {
+            const row = document.createElement("div");
+            row.className = "asset-item";
+
+            const info = document.createElement("div");
+            const title = document.createElement("div");
+            title.style.fontWeight = "700";
+            title.textContent = asset.name;
+
+            const meta = document.createElement("div");
+            meta.className = "asset-meta";
+            meta.textContent = "Tag: " + (release.tag_name || "latest") + " • " + formatBytes(asset.size);
+
+            info.appendChild(title);
+            info.appendChild(meta);
+
+            const link = document.createElement("a");
+            link.className = "btn primary small";
+            link.href = asset.browser_download_url;
+            link.rel = "noopener noreferrer";
+            link.textContent = "Download " + asset.name;
+
+            row.appendChild(info);
+            row.appendChild(link);
+            assetListEl.appendChild(row);
+          });
+
+          statusEl.textContent = "Verified " + matchingAssets.length + " live release asset(s) from tag " + (release.tag_name || "latest") + ".";
+        } catch (err) {
+          statusEl.textContent = "Unable to reach GitHub Releases API (" + (err && err.message ? err.message : "Network error") + "). Use the Web Tabletop portal directly.";
+        }
+      }
+
+      // --- Discord OAuth2 Implicit Grant (Zero Bot Token / Zero client_secret / Memory-Only Token) ---
+      function generateNonce() {
+        const bytes = new Uint8Array(16);
+        window.crypto.getRandomValues(bytes);
+        return Array.from(bytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      }
+
+      function updateDiscordLockUi(verified, message) {
+        const badge = document.getElementById("discordLockBadge");
+        const statusBox = document.getElementById("discordStatusBox");
+        const signOutBtn = document.getElementById("discordSignOutBtn");
+        statusBox.textContent = message;
+        if (verified) {
+          badge.className = "badge ok";
+          badge.textContent = "Discord Account-Lock: Verified";
+          signOutBtn.classList.remove("hidden");
+        } else {
+          badge.className = "badge warn";
+          badge.textContent = "Discord Account-Lock: Sign-In Required";
+          signOutBtn.classList.add("hidden");
+        }
+      }
+
+      async function verifyDiscordAccessToken(accessToken) {
+        discordAccessToken = accessToken;
+        updateDiscordLockUi(false, "Verifying Discord OAuth2 identity via Discord API...");
+        try {
+          const userResp = await fetch("https://discord.com/api/v10/users/@me", {
+            headers: { "Authorization": "Bearer " + accessToken }
+          });
+          if (!userResp.ok) {
+            discordAccessToken = null;
+            updateDiscordLockUi(false, "Discord OAuth2 verification failed (HTTP " + userResp.status + "). Please sign in again.");
+            return;
+          }
+          discordUser = await userResp.json();
+          const lock = NEXUS_APP_MANIFEST.requiredDiscordLock;
+
+          if (Array.isArray(lock.allowedUserIds) && lock.allowedUserIds.length > 0 && !lock.allowedUserIds.includes(discordUser.id)) {
+            updateDiscordLockUi(false, "Signed in as @" + discordUser.username + ", but this account is not in requiredDiscordLock.allowedUserIds.");
+            return;
+          }
+
+          if (lock.guildId) {
+            const guildsResp = await fetch("https://discord.com/api/v10/users/@me/guilds", {
+              headers: { "Authorization": "Bearer " + accessToken }
+            });
+            if (guildsResp.ok) {
+              const guilds = await guildsResp.json();
+              discordGuildIds = Array.isArray(guilds) ? guilds.map(function (g) { return g.id; }) : [];
+              if (!discordGuildIds.includes(lock.guildId)) {
+                updateDiscordLockUi(false, "Signed in as @" + discordUser.username + ", but account is not a member of required Guild ID " + lock.guildId + ".");
+                return;
+              }
+            }
+          }
+
+          const workerUrl = document.getElementById("gatekeeperUrlInput").value.trim();
+          if (workerUrl && /^https:\/\//i.test(workerUrl)) {
+            const gateResp = await fetch(workerUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + accessToken
+              },
+              body: JSON.stringify({
+                userId: discordUser.id,
+                guildId: lock.guildId,
+                allowedRoleIds: lock.allowedRoleIds
+              })
+            });
+            if (!gateResp.ok) {
+              updateDiscordLockUi(false, "Gatekeeper Worker rejected role check (HTTP " + gateResp.status + ").");
+              return;
+            }
+          }
+
+          updateDiscordLockUi(true, "Verified Discord Account: @" + discordUser.username + " (ID: " + discordUser.id + "). Session token kept strictly in JS memory.");
+        } catch (err) {
+          discordAccessToken = null;
+          updateDiscordLockUi(false, "Discord verification error: " + (err && err.message ? err.message : "Network failure"));
+        }
+      }
+
+      function handleOAuthFragmentOnLoad() {
+        const hash = window.location.hash || "";
+        if (!hash.includes("access_token=")) {
+          updateDiscordLockUi(false, "Ready: Enter your public Discord OAuth2 Client ID and click Sign in with Discord to verify requiredDiscordLock.");
+          return;
+        }
+        const params = new URLSearchParams(hash.slice(1));
+        const token = params.get("access_token");
+        const state = params.get("state");
+        const expectedState = window.sessionStorage.getItem("nexus_oauth_state_nonce");
+        window.sessionStorage.removeItem("nexus_oauth_state_nonce");
+
+        // Scrub access_token from URL bar immediately
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        }
+
+        if (!token || !expectedState || state !== expectedState) {
+          updateDiscordLockUi(false, "Discord OAuth2 state verification failed (CSRF protection). Please retry sign-in.");
+          return;
+        }
+        verifyDiscordAccessToken(token);
+      }
+
+      function startDiscordOAuth() {
+        const clientId = document.getElementById("discordClientIdInput").value.trim().replace(/[^0-9]/g, "");
+        if (!clientId) {
+          updateDiscordLockUi(false, "Enter your public Discord Application Client ID (numbers only) before starting OAuth2 Implicit Grant.");
+          return;
+        }
+        pendingOAuthNonce = generateNonce();
+        window.sessionStorage.setItem("nexus_oauth_state_nonce", pendingOAuthNonce);
+        const redirectUri = window.location.origin + window.location.pathname;
+        const oauthUrl = "https://discord.com/oauth2/authorize"
+          + "?client_id=" + encodeURIComponent(clientId)
+          + "&response_type=token"
+          + "&redirect_uri=" + encodeURIComponent(redirectUri)
+          + "&scope=" + encodeURIComponent("identify guilds")
+          + "&state=" + encodeURIComponent(pendingOAuthNonce);
+        window.location.assign(oauthUrl);
+      }
+
+      // --- 20-Color Pie Full Progression Engine (Layers 0-20 + {C} + {Ω} Omnichroma) ---
+      function generateAll190Pairs() {
+        const pairs = [];
+        for (let i = 0; i < WHEEL_COLORS.length; i++) {
+          for (let j = i + 1; j < WHEEL_COLORS.length; j++) {
+            const a = WHEEL_COLORS[i];
+            const b = WHEEL_COLORS[j];
+            const dist = Math.min(j - i, 20 - (j - i));
+            let category = "BRIDGE_BRIDGE";
+            if (dist === 10) {
+              category = "OPPOSITES_180";
+            } else if (a.anchor && b.anchor) {
+              category = dist === 4 ? "ALLIED_ANCHORS" : "ENEMY_ANCHORS";
+            } else if (a.anchor || b.anchor) {
+              category = "ANCHOR_BRIDGE";
+            }
+            pairs.push({
+              codes: [a.code, b.code],
+              pip: "{" + a.code + "/" + b.code + "}",
+              label: a.name + " / " + b.name,
+              category: category,
+              distance: dist
+            });
+          }
+        }
+        return pairs;
+      }
+
+      const ALL_190_PAIRS = generateAll190Pairs();
+
+      const CURATED_TRIOS = [
+        ["W", "U", "B"], ["U", "B", "R"], ["B", "R", "G"], ["R", "G", "W"], ["G", "W", "U"],
+        ["W", "B", "G"], ["U", "R", "W"], ["B", "G", "U"], ["R", "W", "B"], ["G", "U", "R"],
+        ["W", "Iv", "Cy"], ["Cy", "Az", "U"], ["U", "In", "Vi"], ["Vi", "Ob", "B"],
+        ["B", "Cr", "Mg"], ["R", "Or", "Am"], ["G", "Ja", "Aq"]
+      ];
+
+      function matchesSelectedFilter(codes) {
+        if (selectedColorCodes.size === 0) return true;
+        for (const req of selectedColorCodes) {
+          if (!codes.includes(req)) return false;
+        }
+        return true;
+      }
+
+      function renderColorWheel() {
+        const wheelEl = document.getElementById("twentyColorWheel");
+        clearElement(wheelEl);
+        WHEEL_COLORS.forEach(function (c) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "color-chip" + (selectedColorCodes.has(c.code) ? " selected" : "");
+          btn.setAttribute("aria-pressed", selectedColorCodes.has(c.code) ? "true" : "false");
+
+          const sw = document.createElement("span");
+          sw.className = "swatch";
+          sw.style.backgroundColor = c.hex;
+
+          const txt = document.createElement("span");
+          txt.textContent = "{" + c.code + "} " + c.name + (c.anchor ? " ★" : "");
+
+          btn.appendChild(sw);
+          btn.appendChild(txt);
+          btn.addEventListener("click", function () {
+            if (selectedColorCodes.has(c.code)) {
+              selectedColorCodes.delete(c.code);
+            } else {
+              selectedColorCodes.add(c.code);
+            }
+            renderPieState();
+          });
+          wheelEl.appendChild(btn);
+        });
+      }
+
+      function makePipCard(pipText, titleText, metaText) {
+        const card = document.createElement("div");
+        card.className = "pip-card";
+        const codeEl = document.createElement("div");
+        codeEl.className = "pip-code";
+        codeEl.textContent = pipText;
+        const titleEl = document.createElement("div");
+        titleEl.style.fontWeight = "600";
+        titleEl.textContent = titleText;
+        const metaEl = document.createElement("div");
+        metaEl.className = "asset-meta";
+        metaEl.textContent = metaText;
+        card.appendChild(codeEl);
+        card.appendChild(titleEl);
+        card.appendChild(metaEl);
+        return card;
+      }
+
+      function renderLayerContent() {
+        const area = document.getElementById("layerContentArea");
+        const subTabs = document.getElementById("layer2SubTabs");
+        clearElement(area);
+        subTabs.classList.toggle("hidden", activeLayerTab !== "layer2");
+
+        // Live custom layer readout when 1..20 colors selected
+        if (selectedColorCodes.size > 0) {
+          const ordered = WHEEL_COLORS.filter(function (c) { return selectedColorCodes.has(c.code); });
+          const customBox = document.createElement("div");
+          customBox.className = selectedColorCodes.size === 20 ? "omni-card" : "status-box";
+          const pipStr = selectedColorCodes.size === 20
+            ? "{Ω} Omnichroma (All 20 Colors)"
+            : "{" + ordered.map(function (c) { return c.code; }).join("/") + "}";
+          customBox.textContent = "Live Custom Layer " + selectedColorCodes.size + " Pip: " + pipStr
+            + " • Value States: :T (Tint), :S (Shade), :M (Mute)";
+          area.appendChild(customBox);
+        }
+
+        const list = document.createElement("div");
+        list.className = "pip-list";
+
+        if (activeLayerTab === "layer01") {
+          if (selectedColorCodes.size === 0) {
+            list.appendChild(makePipCard("{C}", "Colorless (Layer 0)", "Neutral Diamond Reference"));
+          }
+          WHEEL_COLORS.forEach(function (c) {
+            if (matchesSelectedFilter([c.code])) {
+              list.appendChild(makePipCard(
+                "{" + c.code + "}",
+                c.name + (c.anchor ? " (Anchor)" : " (Bridge)"),
+                "Layer 1 • States: {" + c.code + ":T} {" + c.code + ":S} {" + c.code + ":M}"
+              ));
+            }
+          });
+          area.appendChild(list);
+          return;
+        }
+
+        if (activeLayerTab === "layer2") {
+          const filtered = ALL_190_PAIRS.filter(function (p) {
+            if (activePairCategory !== "ALL" && p.category !== activePairCategory) return false;
+            return matchesSelectedFilter(p.codes);
+          });
+          const countInfo = document.createElement("p");
+          countInfo.textContent = "Showing " + filtered.length + " Option B Fused Pair(s) (10 Diamond Variations Each).";
+          area.appendChild(countInfo);
+          filtered.forEach(function (p) {
+            list.appendChild(makePipCard(p.pip, p.label, p.category.replace("_", " ") + " • Wheel Distance " + p.distance));
+          });
+          area.appendChild(list);
+          return;
+        }
+
+        if (activeLayerTab === "layer3") {
+          CURATED_TRIOS.forEach(function (trio, idx) {
+            if (matchesSelectedFilter(trio)) {
+              list.appendChild(makePipCard("{" + trio.join("/") + "}", "Curated Trio #" + (idx + 1), "Layer 3 • Option B Showcase (1,140 Possible)"));
+            }
+          });
+          area.appendChild(list);
+          return;
+        }
+
+        if (activeLayerTab === "layer4to17") {
+          for (let n = 4; n <= 17; n++) {
+            const sampleCodes = WHEEL_COLORS.slice(0, n).map(function (c) { return c.code; });
+            if (matchesSelectedFilter(sampleCodes)) {
+              list.appendChild(makePipCard("{" + sampleCodes.join("/") + "}", "Layer " + n + " Mixture", "Diamond / Option B Format • " + n + " Colors"));
+            }
+          }
+          area.appendChild(list);
+          return;
+        }
+
+        if (activeLayerTab === "layer18") {
+          for (let k = 0; k < 10; k++) {
+            const a = WHEEL_COLORS[k];
+            const b = WHEEL_COLORS[(k + 10) % 20];
+            const included = WHEEL_COLORS.filter(function (c) { return c.code !== a.code && c.code !== b.code; }).map(function (c) { return c.code; });
+            if (matchesSelectedFilter(included)) {
+              list.appendChild(makePipCard("{-(" + a.code + "," + b.code + ")}", "All Minus " + a.name + " & " + b.name, "Layer 18 • Subtraction Symmetry (18 Colors)"));
+            }
+          }
+          area.appendChild(list);
+          return;
+        }
+
+        if (activeLayerTab === "layer19") {
+          WHEEL_COLORS.forEach(function (omitted) {
+            const included = WHEEL_COLORS.filter(function (c) { return c.code !== omitted.code; }).map(function (c) { return c.code; });
+            if (matchesSelectedFilter(included)) {
+              list.appendChild(makePipCard("{-" + omitted.code + "}", "All Minus " + omitted.name, "Layer 19 • 19-Color Subtraction Pip"));
+            }
+          });
+          area.appendChild(list);
+          return;
+        }
+
+        if (activeLayerTab === "layer20") {
+          const omni = document.createElement("div");
+          omni.className = "omni-card";
+          const h3 = document.createElement("h3");
+          h3.textContent = "Layer 20 — Unique Omni Pip: Omnichroma {Ω}";
+          const desc = document.createElement("p");
+          desc.textContent = "Full fusion of all 20 Colors around the Wheel. Breaks free from Diamond/Option B into bespoke celestial & iridescent prism geometry. Variants: {Ω}, {Ω·M} (Mandala), {Ω·P} (Prism), {Ω·S} (Solar), {Ω·E} (Eclipse).";
+          omni.appendChild(h3);
+          omni.appendChild(desc);
+          area.appendChild(omni);
+        }
+      }
+
+      function renderPieState() {
+        renderColorWheel();
+        const summary = document.getElementById("pieSelectionSummary");
+        if (selectedColorCodes.size === 0) {
+          summary.textContent = "Pie Selection: None — Showing All Pips";
+        } else if (selectedColorCodes.size === 20) {
+          summary.textContent = "Pie Selection: All 20 Selected — Layer 20 Omnichroma {Ω}";
+          activeLayerTab = "layer20";
+          document.querySelectorAll("#layerTabs .tab-btn").forEach(function (b) {
+            b.classList.toggle("active", b.dataset.layer === "layer20");
+          });
+        } else {
+          summary.textContent = "Pie Selection (" + selectedColorCodes.size + "/20): " + Array.from(selectedColorCodes).join(", ");
+        }
+        renderLayerContent();
+      }
+
+      // --- Hub Sync postMessage & ?hubSync=1 Handshake ---
+      function setupHubBridgeHandshake() {
+        const params = new URLSearchParams(window.location.search);
+        const badge = document.getElementById("hubSyncBadge");
+        if (params.get("hubSync") === "1") {
+          badge.className = "badge ok";
+          badge.textContent = "Hub Bridge: ?hubSync=1 Handshake Active";
+          if (window.opener) {
+            window.opener.postMessage({
+              type: "NEXUS_APP_MANIFEST_READY",
+              payload: NEXUS_APP_MANIFEST
+            }, "*");
+          }
+        }
+        window.addEventListener("message", function (event) {
+          if (!event || !event.data || typeof event.data !== "object") return;
+          if (event.data.type === "NEXUS_HUB_PING" && event.source) {
+            event.source.postMessage({
+              type: "NEXUS_APP_MANIFEST_READY",
+              payload: NEXUS_APP_MANIFEST
+            }, event.origin === "null" ? "*" : event.origin);
+          }
+        });
+      }
+
+      // --- Init ---
+      const platformInfo = detectPlatform();
+      document.getElementById("detectedPlatformBadge").textContent = "Platform: " + platformInfo.label;
+
+      const openInstalledBtn = document.getElementById("openInstalledAppBtn");
+      const pwaText = document.getElementById("pwaInstructionsText");
+      if (platformInfo.key === "ios") {
+        openInstalledBtn.classList.add("hidden");
+        pwaText.textContent = "Safari on iOS/iPadOS: Tap the Share button and choose 'Add to Home Screen' to launch the Web Tabletop like an app.";
+      } else if (platformInfo.key === "chromebook") {
+        openInstalledBtn.classList.add("hidden");
+        pwaText.textContent = "ChromeOS: Click the Install icon in the Chrome address bar or Menu -> Save and Share -> Install page as app.";
+      } else if (platformInfo.key === "discord") {
+        openInstalledBtn.classList.add("hidden");
+        pwaText.textContent = "Discord In-App Browser: Tap the menu to open in your system browser for full Web Tabletop & PWA support.";
+      }
+
+      document.getElementById("refreshReleasesBtn").addEventListener("click", function () {
+        loadLatestReleaseAssets(platformInfo);
+      });
+      document.getElementById("discordSignInBtn").addEventListener("click", startDiscordOAuth);
+      document.getElementById("discordSignOutBtn").addEventListener("click", function () {
+        discordAccessToken = null;
+        discordUser = null;
+        discordGuildIds = [];
+        updateDiscordLockUi(false, "Session cleared from memory.");
+      });
+      document.getElementById("copyManifestBtn").addEventListener("click", function () {
+        const json = JSON.stringify(NEXUS_APP_MANIFEST, null, 2);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(json).then(function () {
+            document.getElementById("discordStatusBox").textContent = "Copied nexus-app.json to clipboard.";
+          });
+        }
+      });
+
+      document.getElementById("selectAll20Btn").addEventListener("click", function () {
+        WHEEL_COLORS.forEach(function (c) { selectedColorCodes.add(c.code); });
+        renderPieState();
+      });
+      document.getElementById("resetPieBtn").addEventListener("click", function () {
+        selectedColorCodes.clear();
+        activeLayerTab = "layer01";
+        document.querySelectorAll("#layerTabs .tab-btn").forEach(function (b) {
+          b.classList.toggle("active", b.dataset.layer === "layer01");
+        });
+        renderPieState();
+      });
+      document.querySelectorAll("#layerTabs .tab-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          activeLayerTab = btn.dataset.layer;
+          document.querySelectorAll("#layerTabs .tab-btn").forEach(function (b) {
+            b.classList.toggle("active", b === btn);
+          });
+          renderLayerContent();
+        });
+      });
+      document.querySelectorAll("#layer2SubTabs .tab-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          activePairCategory = btn.dataset.pairCat;
+          document.querySelectorAll("#layer2SubTabs .tab-btn").forEach(function (b) {
+            b.classList.toggle("active", b === btn);
+          });
+          renderLayerContent();
+        });
+      });
+
+      handleOAuthFragmentOnLoad();
+      setupHubBridgeHandshake();
+      loadLatestReleaseAssets(platformInfo);
+      renderPieState();
+    })();
+  </script>
+</body>
+</html>

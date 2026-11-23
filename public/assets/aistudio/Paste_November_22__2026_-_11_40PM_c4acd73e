@@ -1,0 +1,164 @@
+Update and upgrade my existing static, mobile-first React + TypeScript + Vite Web App ("Nexus Master Hub", hosted on GitHub Pages with relative base path "./", hash-based routing, and PWA manifest) to support ALL Physical TCGs, Digital TCGs, Niche/Indie TCGs, Defunct Physical & Digital CCGs, TCG-Based Video Games, In-Game Card Mini-Games, ALL Notebook Formats, an AI-Powered TCG Combo Generator, AND a Direct Bidirectional GitHub Repo Sync Bridge with https://github.com/Summer-Warrior/MPV-TCG-Card-Making-Software-Updated — while strictly banning "Vibe Code", banning copied proprietary code, and strictly LOCKING every source game that connects to a sourced GitHub client.
+
+====================================================================
+1. DIRECT GITHUB BRIDGE: MPV-TCG-CARD-MAKING-SOFTWARE-UPDATED SYNC
+====================================================================
+Build a clean, type-safe, zero-vibe-code bidirectional repository integration in src/services/mpvGitHubBridge.ts and src/engine/codeStringExporter.ts linking this Nexus Master Hub repository with https://github.com/Summer-Warrior/MPV-TCG-Card-Making-Software-Updated:
+
+1. MUTUAL REPOSITORY LINK HANDSHAKE:
+   - Store a canonical link manifest in public/registry/repo-bridge.json defining:
+     * hubRepo (configurable owner/repo/branch for this Nexus Master Hub repo)
+     * cardMakerRepo: "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated" (editable branch, default "main")
+     * bridgeSchemaVersion: "1.0.0"
+     * syncTargetPath: "nexus-bridge/client-codestring-index.json"
+     * cardPackImportPaths: editable list of JSON/card-pack paths inside MPV-TCG-Card-Making-Software-Updated
+     * linkVerificationMode: "MUTUAL_MANIFEST_REQUIRED"
+   - When the user triggers "Check Link & Sync Status", use the live GitHub REST API (header: "X-GitHub-Api-Version: 2026-03-10", "Accept: application/vnd.github+json") to:
+     (a) Inspect Summer-Warrior/MPV-TCG-Card-Making-Software-Updated dynamically (latest commit SHA, default branch, root/bridge directory entries — NEVER hardcode guessed private paths without checking if they exist first).
+     (b) Verify whether both repositories mutually reference each other via nexus-repo-link.json / repo-bridge.json.
+     (c) Report exact Link State: "UNLINKED", "ONE_WAY_ONLY", "LINKED_OUT_OF_SYNC", or "LINKED_AND_CURRENT", showing a real side-by-side diff of missing/changed non-locked clients, code strings, and card packs.
+
+2. LIVE CODE-STRING & NON-LOCKED CLIENT INFORMATION EXPORT (FOR CODING & TCG SUPPORT):
+   - Implement src/engine/codeStringExporter.ts to deterministically compile a clean, versioned JSON payload (client-codestring-index.json) strictly for NON-LOCKED clients (upstreamSourceLock === false):
+     * Eligible Targets: Flagship Ultimate TCG (WIP), all Custom Project Clones (21-Digit BigInt), all Built-In Web Tabletop clean-room blueprints, Notebook Realms (Duel Monsters formats, Nested-Planar MTG, Planet Cray Vanguard), TCG Video Games, Mini-Games, Niche/Defunct blueprints, and all AI/User-created Combos.
+     * Per-Client Coding Spec Included:
+       - clientId, displayName, boardArchetype, originType, protocolHash, schemaVersion
+       - Code-String Rules: allowed ID formats (8-digit, 21-digit numeric ^[0-9]{1,21}$, arbitrary string/UUID), c<code_string>.lua / JSON script template, maxDigitPrecision (21+ BigInt), customVarInput21, customFuncName, customFuncInput21, and customCodeVarExpr21 validation regex
+       - Full Client Geometry & Rules Metadata: zone IDs & capacities, pile IDs, resource pool keys, turn phases, legal attributes/stats, active video-game mechanic hooks, and canonical 20-Color Pie pip grammar ({W}..{Aq}, Layer 2 pairs, {Ω·M}..{Ω·E})
+       - Time-Travel Safety Flag: enforces allowTimeTravelFlagsOnMatchCards: false (strictly allowing only "End Turn" and "Extra Turn" in-match temporal effects)
+     * STRICT LOCKED-CLIENT FIREWALL:
+       - Any GitHub-sourced locked client (upstreamSourceLock === true, e.g., ProjectIgnis/EDOPro, Card-Forge/forge) MUST be excluded from writable coding targets and listed only inside a read-only lockedClientsReadOnly array with a one-click "Fork as Non-Locked 21-Digit Clone for MPV Coding" helper.
+
+3. CHECK, UPDATE & PULL WORKFLOWS (DIRECT WHEN LINKED + ZERO-TOKEN FALLBACK):
+   - Direct Update to MPV-TCG-Card-Making-Software-Updated (ONLY enabled when mutual repo link is verified):
+     * Option A — Browser Direct Commit: Allows the developer to optionally enter a Fine-Grained GitHub Personal Access Token (scoped ONLY to Contents: Read & Write on these two repos; stored strictly in sessionStorage or opt-in localStorage — NEVER hardcoded or committed in source code) to execute GET (fetch existing file SHA) + Base64-encoded PUT /repos/Summer-Warrior/MPV-TCG-Card-Making-Software-Updated/contents/{path} with deterministic conflict handling (409/422 recovery) and full commit SHA receipt.
+     * Option B — Zero-Token Mobile & GitHub Actions Sync: One-tap buttons to (1) Copy/Download nexus-repo-link.json for MPV-TCG-Card-Making-Software-Updated, (2) Copy/Download the full client-codestring-index.json coding bundle, and (3) Copy/Download a ready-to-drop .github/workflows/nexus-mpv-sync.yml workflow file so GitHub Actions automatically syncs both linked repos on push via repository_dispatch.
+   - Pull Coded Cards & Scripts Back Into Non-Locked Clients:
+     * Fetches validated card packs, 21-digit code strings, and custom card scripts from Summer-Warrior/MPV-TCG-Card-Making-Software-Updated (via GitHub Contents API / raw URLs), validates them against src/schemas/ (rejecting malformed cards or any match card carrying time-travel flags), saves them into IndexedDB Card Vault, and lets the user immediately test them on the Tabletop in any matching non-locked client.
+   - Live Companion Handshake: Also support URL query parameter (?exportClientInfo=1) and window.postMessage handshakes so if MPV-TCG-Card-Making-Software-Updated is opened in another browser tab/GitHub Pages site, it can directly query live non-locked client info and code strings without manual copy-paste.
+
+====================================================================
+2. STRICT ANTI-"VIBE CODE" ENGINEERING MANDATE (MANDATORY)
+====================================================================
+DO NOT write "Vibe Code" — zero sloppy AI shortcuts, zero stubbed buttons, zero fragile spaghetti components, and zero hallucinated features:
+1. STRICT TYPE SAFETY & DETERMINISTIC LOGIC:
+   - Strict TypeScript across all files (no "any", no "@ts-ignore", no empty "catch {}" blocks, no untyped JSON casts).
+   - Define explicit interfaces/discriminated unions in src/schemas/ and validate every loaded/imported JSON registry, Card Pack, GitHub API payload, or Combo blueprint at runtime with clear error recovery.
+2. ZERO DEAD CONTROLS OR FAKE SIMULATORS:
+   - Ban "// TODO", no-op toggles, fake loading bars, or cosmetic-only counters. Every button, sync action, format selector, combo generator control, and mechanic toggle MUST execute a real, deterministic state transition.
+   - NEVER build fake C++ or Java boot animations pretending to run external binaries inside the browser.
+3. CLEAN MODULAR ARCHITECTURE (ONE SINGLE TABLETOP STORE):
+   - Separate code strictly into:
+     * src/schemas/ (canonical TypeScript types + runtime JSON validators)
+     * src/engine/ (pure, side-effect-free TypeScript rules, BigInt arithmetic, ChromaticEngine, board-archetype reducers, Combo Synthesizer, Upstream Lock Guard, CodeStringExporter, and video-game mechanic modules — zero React/DOM imports inside src/engine/)
+     * src/services/ (mpvGitHubBridge.ts for live GitHub REST API v2026-03-10 check/update/pull + Discord Webhook sender)
+     * src/storage/ (typed IndexedDB + localStorage persistence & JSON/Markdown export helpers)
+     * public/registry/ (modular JSON catalogs: tcg-catalog.json, apps.json, card-packs.json, wikis.json, bots.json, repo-bridge.json)
+     * src/components/ & src/views/ (lean reusable UI components — ZERO duplicate boards, duplicate HP bars, or duplicate logs)
+4. BUILT-IN INVARIANT VERIFICATION (src/engine/invariants.ts):
+   - Accessible inside a discreet Diagnostics modal, deterministically verifying:
+     (a) ChromaticEngine has all 190 Layer-2 pairs and boots with 0 selected colors,
+     (b) every catalog blueprint passes strict runtime schema validation,
+     (c) BigInt 21+ digit math never overflows,
+     (d) zero standard match gameplay cards carry time-travel flags,
+     (e) EVERY GitHub-sourced locked client base game is strictly immutable (upstreamSourceLock === true, requiresStrictBase === true, intact protocolHash), and
+     (f) CodeStringExporter exports ONLY non-locked clients to MPV-TCG-Card-Making-Software-Updated and rejects any write targeting a locked source game.
+
+====================================================================
+3. CODE-PROTECTION RULE & STRICT GITHUB-CLIENT SOURCE LOCKING
+====================================================================
+1. CODE-PROTECTION BOUNDARY (VISUALS & GAMEPLAY ALLOWED — NO COPIED CODE):
+   - BANNED: Never copy, clone, decompile, reverse-engineer, proxy, or reuse underlying proprietary source code, binaries, or private server code from ANY live/active digital TCG, video game, or company protective of its code.
+   - ALLOWED: Recreate authentic visual styles, UI layouts, playmat atmospheres, card frame aesthetics, phase bars, animations/VFX, and gameplay ideas/mechanics inspired by every physical TCG, digital TCG, and TCG video game — written 100% from scratch as clean-room original code driven by JSON blueprints.
+2. MANDATORY SOURCE-GAME LOCK WHEN GITHUB CLIENTS ARE SOURCED:
+   - Whenever a base game sources an upstream GitHub client repository — including ProjectIgnis/EDOPro (https://github.com/ProjectIgnis/EDOPro), Card-Forge/forge (https://github.com/Card-Forge/forge), NexusTCG Android Prototype (https://github.com/Summer-Warrior/Tcg-game-engine-test), or any user-added GitHub community client (Cockatrice, XMage, Talishar, Karabast, Jinteki.net, etc.) — that base game MUST be strictly LOCKED (upstreamSourceLock: true, requiresStrictBase: true, isBaseStandard: true, upstreamRepoUrl, deterministic protocolHash).
+   - Display a clear "LOCKED TO UPSTREAM GITHUB SOURCE" badge and block ALL direct rule edits, code-string injections, or deletions on that locked base game.
+   - COPY-ON-FORK RULE: Modifying or combining a locked GitHub-sourced game (by user, AI Combo Generator, or MPV Card Maker sync) MUST automatically create a separate derived blueprint (originType: "AI_COMBO" | "USER_HYBRID" | "CUSTOM_CLONE_21", upstreamSourceLock: false, derivedFromLockedIds: [...]) while keeping the original GitHub-sourced base game 100% locked and untouched.
+3. HONEST 4-TIER CLIENT POLICY (PER ENTRY IN CLIENT DETAIL DRAWER):
+   - Tier 1 Official / Live Digital Clients & Video Games: External info/store links + platform badges (or "Archival Preservation — Servers Closed" for sunsetted digital games).
+   - Tier 2 Locked Upstream GitHub / Community Clients: Exact GitHub repo links marked "Locked to Upstream Source Repo (Base Rules Immutable)".
+   - Tier 3 Custom Project Clone (Derived Non-Locked Fork): Original 21-digit BigInt variable/function/code-string register engine + direct MPV Card Maker coding bridge support + federated custom JSON card packs.
+   - Tier 4 Built-In Web Tabletop: Clean-room, playable original implementation inside ONE unified tabletop engine.
+4. DISCORD SECURITY RULE:
+   - NEVER request, accept, or store Discord Bot Tokens in frontend code. Support ONLY local-storage user-supplied Discord Webhook URLs and public Bot OAuth2 invite links.
+
+====================================================================
+4. AI & USER TCG COMBO ENGINE (APEX / OMNI-HYBRID SYNTHESIZER)
+====================================================================
+Keep src/engine/comboSynthesizer.ts strictly separate from the Flagship Ultimate TCG:
+1. Pre-populate public/registry/tcg-catalog.json with 6+ curated AI-designed Cross-TCG Combo Showcase presets (originType: "AI_COMBO", upstreamSourceLock: false — automatically eligible for MPV Card Maker coding support, never mutating locked GitHub source games):
+   - Apex Mediated Nexus (Duel Monsters Maximum-Power Mat + MTG 5-Anchor Stack + Vanguard 6-Circle Drive Checks)
+   - Hyper-Velocity Grid Clash (Turbo Duel Speed Spells + Mega Man Battle Network 3x6 Panel Grid + One Piece DON!!)
+   - Roguelike Multiverse Gauntlet (MTG Commander + Slay the Spire Boss Intents/Relics + Balatro Chips x Mult)
+   - Tactical Memory Arena (Digimon Memory Gauge + Duelyst 5x9 Grid + Fire Emblem Adjacency Bonds)
+   - Shadow Realm Action Raid (Action Duel 3 Action Spells + Chaotic 3v3 Triangle + Inscryption Scale)
+   - Chrono-Sleight Championship (Kingdom Hearts Chain of Memories 0-9 Sleights + Weiss Schwarz Climax/Clock + Guilty Gear Roman Cancel)
+2. Interactive "AI Combo Architect" Modal: Let users pick ANY 2-4 games/formats OR click "Auto-Generate Balanced AI Combo" to deterministically merge non-overlapping zones, compatible resource/win bridges, and pluggable Video-Game Mechanic Modules (PXZ Pair/Solo/XP, MvC Assist/Tag/Roman Cancel, Fire Emblem Adjacency, Slay the Spire Intents, Battle Network Program Advance, Triple Triad Directional Capture) with automatic Copy-on-Fork tracking (derivedFromLockedIds) and immediate export into the MPV Card Maker code-string index.
+
+====================================================================
+5. ALL NOTEBOOK FORMATS + COMPLETE 110+ GAME CATALOG
+====================================================================
+Drive ALL games and formats through 11 composable Board Archetype Templates (zone-rows, battlefield-stack, active-bench-prizes, tug-of-war-track, multi-lane-arena, tactical-grid, formation-and-ranks, asymmetric-or-path, deck-as-life-or-combat-chain, directional-and-territory-grid, video-game-action-or-roguelike) plus toggleable Arena & Video-Game Modifiers:
+
+A. FLAGSHIP CUSTOM SYSTEM (NON-LOCKED, SEPARATE FROM APEX / AI COMBOS):
+- Ultimate TCG (WIP Foundational System) — Section 6 below.
+
+B. ALL NOTEBOOK YU-GI-OH! / DUEL MONSTERS FORMATS (EXACT ZONE SPECS):
+Keep ProjectIgnis/EDOPro Base MR5 strictly locked in its GitHub-sourced base slot, while offering these selectable non-locked Notebook Rule Sets:
+1. Base Master Rule (Expanded): Skill Card(s) Zone, Field Spell Zone, Extra Deck (up to 15), GY, Main Deck (40-60), Banished Area, Soul Zone, 5 Monster Zones, 2 EMZ, 2 dedicated Pendulum Zones (NOT inside S/T Zones), 5 Spell/Trap Zones.
+2. Yumi Muto Maximum-Power Hybrid Mat: 5 Main Monster Zones, 5 full Spell/Trap Zones, 2 dedicated Pendulum Zones, 1 Field Spell Zone, 1 EMZ, Main/Extra/GY/Banish.
+3. Turbo Duel (Base): Base Master Rule + Pre-Filled Field Spell Zone + Speed Spell Zone.
+4. Turbo Duel — Mario Kart Duel (Placeholder Name): Turbo Duel + Character Zone (weight & Item exclusivity) + Item Zone (up to 20 counters; Coin Box adds 1-6 counters per Item Box).
+5. Action Duel (Base): Base Master Rule + 3 Action Spell Zones.
+6. Action Duel — Mario Party Duel (WIP modular format slot).
+7. Speed Duel: 20-40 Main Deck, up to 10 Extra Deck, 3 Monster Zones, 3 S/T Zones, 2 dedicated Pendulum Zones (not inside S/T), Speed Spell Zone, Field Spell, Skill Card(s) Zone, Soul Zone, GY, Banished.
+8. Rush Duel (Base & Updated): 40-60 Main, up to 15 Extra, 2 dedicated Pendulum Zones (not inside S/T), Skill, Field, Soul, GY, Banished; Base = 3 Monster / 3 S/T; Updated = 5 Monster / 2 EMZ / 5 S/T.
+9. Duel Monsters Modifiers: Deck Master/Avatar Bonding, Terrain Field-Power, Shadow Game Mana-Amplification, Millennium Relic Resonance, and Switch Monsters.
+
+C. NOTEBOOK MTG, VANGUARD & MULTIVERSE ARENA FORMATS:
+- Magic: The Gathering (Card-Forge GitHub-Locked Base + Nested-Planar Realm): Standard, Commander, Universes Beyond planes, and KaibaCorp / Industrial Illusions Holographic Table Celebration Set.
+- Cardfight!! Vanguard (Planet Cray Realm): Core 6-Circle Formation (1 Vanguard + 5 Rear-Guards, Grade Riding, Soul-Stack, 6-Point Damage Zone, Counter-Blast, Drive/Trigger Checks, Hand-Blocking). Experimental expansions (Planar Reality Law Slot, Inverted Resonance Over-Riding, Triple-Pathway Rides, Adjacency Support) MUST stay strictly inside an opt-in "Side-Project Formats" toggle.
+- Universal Arena Hosting Toggles: Native Universe Match vs. Off-World Morphing Grid Battlefield (Polarity Insulation + Ludic Containment) vs. Out-of-Game Card Invocation Mode (zero-handshake personal-mana echoes + Evocation Fading), plus optional Arena Siphoning Breach and Tokusatsu Grid-Tether modifiers (55a Secrecy, Duplicate-Color Interference vs. Multi-Color Megazord XP, Unaware vs. Aware Handshake risk).
+- Setting-Driven Tournament Modes: TCG vs. Traditional Lore-Combat formats, Non-Lethal vs. Lethal ([Permadeath Clause]) stakes, Input-Check Manual Lockout (NPC AI plays out tournament brackets when locked out; both player Avatars and pure lore NPCs eligible), Mandatory Military Deployment, and Same-Account Multi-Avatar Encounters.
+
+D. COMPLETE ACTIVE, DIGITAL, VIDEO-GAME, MINI-GAME, NICHE & DEFUNCT CATALOG:
+- Active Physical: MTG, Pokemon TCG, Yu-Gi-Oh! (MR5, Speed, Rush, Genesys), One Piece, Riftbound, Gundam Card Game, Disney Lorcana, Digimon Card Game, Union Arena, DBS (Masters & Fusion World), Flesh and Blood, Star Wars: Unlimited, Cardfight!! Vanguard, Weiss Schwarz, Shadowverse: Evolve, Hololive OCG, Duel Masters, Final Fantasy TCG, Force of Will, Grand Archive, Altered, Sorcery: Contested Realm, UniVersus, Elestrals, CookieRun: Braverse, Godzilla, Palworld, Cyberpunk TCG, Battle Spirits Saga.
+- Active Digital (External Tier 1 Links + Clean-Room Mats): Hearthstone (Standard + Battlegrounds), Marvel Snap, Shadowverse: Worlds Beyond, Pokemon TCG Pocket, Legends of Runeterra, Gwent, Master Duel, Duel Links, MTG Arena, MTGO, Pokemon TCG Live, Digimon Alysion, DBS Fusion World Digital, Vanguard Dear Days 2, Eternal, KARDS, Parallel, CUE, Teppen, PvZ Heroes.
+- TCG-Based & Card-Driven Video Games: YGO Forbidden Memories, YGO Duelists of the Roses (7x7 Grid), YGO Capsule Monster Coliseum, YGO Tag Force (2v2), Pokemon TCG (GBC), MTG Shandalar, Digimon Digital Card Battle (PS1), SNK vs. Capcom Card Fighters' Clash, Mega Man Battle Network (3x6 Panel Grid, Custom Gauge, Program Advance, PET/VTWS Lore Bridge), Kingdom Hearts: Chain of Memories (0-9 Card-Break & 3-Card Sleights), Baten Kaitos, Culdcept, Phantom Dust, Metal Gear Acid, Slay the Spire, Inscryption, Monster Train, Balatro, Library of Ruina, Lost Kingdoms, Griftlands, Wildfrost, Cobalt Core, Midnight Suns.
+- Iconic Video-Game Card Mini-Games: Triple Triad (FFVIII 3x3), Tetra Master (FFIX 4x4), Queen's Blood (FFVII Rebirth 3x5), Genius Invokation TCG (Genshin 8-Dice), Tableturf Battle (Splatoon 3), Witcher 3 Gwent, Pazaak (KOTOR), Caravan (Fallout NV), Joustus, Xenocard.
+- Niche, Indie, Regional & LCGs: WIXOSS, Z/X, Lycee Overture, Rebirth for You, Build Divide, Gate Ruler, Precious Memories, Android: Netrunner / Null Signal, VTES, L5R LCG, Ashes Reborn, KeyForge, Alpha Clash, Ward, Neopets Battledome, Kryptik, Shard Bugs, Doomtown, Sakura Arms, Exceed Fighting System, Radlands, Mindbug, Redemption, Arkham Horror / Marvel Champions / LOTR LCG.
+- Defunct Physical CCGs: Chaotic, Star Wars CCG Decipher, Star Trek CCG Decipher, LOTR TCG Decipher, WoW TCG, VS System, Future Card Buddyfight, DBZ Score/Panini, Zatch Bell!, Naruto CCG, Harry Potter TCG, Raw Deal, Magi-Nation Duel, Kaijudo, Dragoborne, Argent Saga, Transformers TCG, Star Wars: Destiny, Warlord: Saga of the Storm, Middle-earth CCG, L5R CCG, 7th Sea, Babylon 5, BattleTech, Shadowfist, Spellfire, Rage, Guardians, Wyvern, MetaZoo Classic, Bleach/Inuyasha/Shaman King/FMA/Gundam War, Monster Rancher, Digimon Digi-Battle, Bakugan Hex Matrix, Lightseekers.
+- Defunct Digital TCGs: Artifact, Elder Scrolls: Legends, Duelyst, Faeria, YGO Cross Duel, Vanguard ZERO, Hex: Shards of Fate, SolForge, Scrolls / Caller's Bane, Chronicle: RuneScape Legends, Mythgard, Might & Magic: Duel of Champions, Infinity Wars, Card Wars, Spellweaver, Fable Fortune, Hand of the Gods, Star Wars: Force Arena, Runestrike.
+- Companion Software Entry in public/registry/apps.json: Register "MPV TCG Card Making Software (Updated)" linking to https://github.com/Summer-Warrior/MPV-TCG-Card-Making-Software-Updated with direct "Open Bridge Sync Panel" action, alongside Pegasus Games Arcade entries (Manga Man!, Monster World, Capsule Monsters, Combat Cards, Finish Dash).
+
+====================================================================
+6. FLAGSHIP ULTIMATE TCG (WIP) & EXACT 20-COLOR PIE RULES
+====================================================================
+1. STRICT WIP GUARDRAILS:
+   - Tag unfinished mechanics cleanly as "WIP / Extensible".
+   - NEVER invent philosophies, emotions, or moral alignments for the 20 Colors (strictly scientific angular spin-polarization vectors under UMFT, decoupled from Elements, Polarity, Morality, and Emotion).
+   - NEVER hardcode unconfirmed math for Batch 2 Resources (Leylines, Reliquaries, Hourglasses), Batch 3 Resources (Totems, Crucibles, Beacons), Sub-Deck Dragging Rules, Mana Number splits, 3D Grid Resource Combat math, or Cost-Behavior Filters (#2-#5).
+2. STRICT TIME-TRAVEL CLIENT RULE:
+   - Standard match gameplay cards, Tabletop card inspectors, AND exported/imported MPV Card Maker match cards MUST NEVER show or store time-travel flags (Filters 19-21).
+   - Allowed in-match temporal card effects are strictly "End Turn" and "Extra Turn" only (including Hourglasses).
+   - Time-travel flags (Filters 19-21) and Causal Quarantine status appear ONLY on Sovereign World-Walker Avatar Creation profiles and Memorial Forge dossiers.
+3. ULTIMATE TCG BOARD, AVATAR, DECK & PERSISTENT-WORLD RULES:
+   - Non-Card User-Created Avatar (0 card slots) on Multi-Avatar Accounts carrying persistent Levels, 3D Grid stats, openly shown Sequential Flavor Filters (pure integers 1-85; Xa strictly for Gameplay Design), Aspect-Penalty off-flavor surcharges (1a), and dynamic Flavor Drift.
+   - Deckbuilding: Deferred minimums, uncapped deck ceiling, 5-copy default per card name with rules-text overrides allowed both below and above 5 copies, Main Deck (including Lands), Extra/Apex Deck, and 15+ Resource Sub-Decks (Mana Stones, Runes, Leylines, Reliquaries, Hourglasses, Totems, Crucibles, Beacons, Mirrors, Sanctums, Rifts, Matrices, Seeds, Dampeners, Pacts).
+   - 2D Game Mat + Toggleable 3D Combat Positioning Grid (Backline Anchor Coordinates for manifested resources), Hidden Standby Row (2-3), Combined World Zone ([Magic]/[Force]/[Dual-Law]/[Extraversal Rift] + Attached Heart-Pocket Keyhole toggle), 4 Turn Phases (Draw -> Resource/Setup -> Action/Battle -> End), LIFO Chain/Stack, 5-6 Shields, Project X Zone Frontline (3-5 cap defaulting to 3, Pair + Solo Units, Cross Hit, 0%-150% XP Gauge), Dual-Chamber Vitality (Magic Pulse & Force Pulse + Outsider toggle), and collapsible 4 Planetary Sensor Indices + Material Tiers 1-8 drawer.
+   - Server-Synced Clock + Offline NPC AI Thought-Stream & Telegraphed Intent viewer, Offline AI Two-Gate Authorization (Gate 1: Native Intended Time on Server Clock; Gate 2: Companion App Approval / Guardrails / Decline / Live Drop-In), Event-Flagged + Player-Voted Full-Lifespan Memorial Forge (non-automatic acquisition into global pool), and Strict Dual-Channel Chat Separation (IC Chat = SOLE Memorial Forge feed; separate OOC Normal & OOC Ruling-Call logs).
+4. EXACT 20-COLOR PIE (READ VERBATIM FROM ATTACHED HTML):
+   - Port "20-Color Pie — Complete Layers 1 to 20 & Unique Omni Pip.html" verbatim into src/engine/chromaticEngine.ts: Layer 0 {C}, Layer 1 colors20 (5 gold-bordered Anchors + 15 Bridges), Layer 2 pairData (all 190 pairs Ice {Ic} through Tide {Td}), Layer 3 curatedTrios (17), layers4to17Samples (25), layer18Samples (3), layer19Names (20), exact RGB mixHex/muteHex/contrast functions, Option B Diamond SVGs (Layers 1-19), and 6 bespoke Layer 20 Omnichroma {Ω} geometries.
+   - PERMANENT UI RULE: Interactive 20-Color Pie MUST ALWAYS load with ZERO default colors selected and show ALL pips/cards until actively filtered.
+
+====================================================================
+7. AAA POLISH, 5-SECTION NAV & SOLO MOBILE WORKFLOW
+====================================================================
+1. Dynamic Chameleon Theming per active TCG/Format/Combo (sleek game-launcher polish, zero debug clutter).
+2. Exactly 5 Clean Navigation Sections (Bottom Nav on Mobile, Collapsible Sidebar on Desktop):
+   - 1. Master Hub: Hero Spotlight, Platform & Category filter chips (including AI & User Combos and Locked GitHub Clients), 4-Tier Client Drawer showing Lock Status, AI Combo Architect modal, and quick badge showing MPV Card Maker Repo Link Status.
+   - 2. Card Vault & 20-Color Atlas: Sub-tabs for Card Library (arbitrary-length string IDs, 21+ digit BigInt math, federated IndexedDB Card Packs, paginated search), Custom Card Forge (zero time-travel flags on match cards), Deck Builder (uncapped size, 5-copy default + overrides, 15+ Resource Sub-Decks), Interactive 20-Color Pie Atlas, AND the "MPV Card Maker Bridge" Drawer/Tab (check Summer-Warrior/MPV-TCG-Card-Making-Software-Updated, verify mutual repo link, inspect live non-locked client code strings, push updates when linked, or pull coded cards straight into non-locked clients).
+   - 3. Tabletop: ONE single unified playmat-first board (~80%+ viewport), fanned Hand Dock with zoom & foil sheen, Format & Arena Hosting switcher, 11-Archetype + Video-Game Mechanic renderer, compact Phase Strip, and slide-over drawers for Event Log, LIFO Chain/Stack, 21-Digit Calculator, Sensor Indices, Video-Game Mechanics, and Dual-Channel Chat (IC / OOC / Ruling Calls).
+   - 4. Lore, Avatars & Memorial Forge: Markdown Cosmology/Wiki viewer, Multi-Avatar Roster & Creation (the ONLY place Filters 19-21, Causal Quarantine, AI Thought-Stream, and Offline AI Two-Gate Approval live), Tournament Mode settings, and Full-Lifespan Memorial Forge Archive.
+   - 5. Discord RP & Bots: Server/Bot OAuth2 directory + local-only Discord Webhook RP Broadcaster (zero bot tokens) + discreet Diagnostics/Invariants modal verifying GitHub Source Locks, MPV Bridge non-locked firewall, and Anti-Vibe-Code checks.
+3. Solo Mobile Developer Workflow: Every creator form (including AI Combos and MPV Repo Bridge manifests/workflows) saves immediately to IndexedDB/localStorage AND includes one-tap Copy JSON and Download JSON/YAML/Markdown buttons for phone-to-GitHub updates.

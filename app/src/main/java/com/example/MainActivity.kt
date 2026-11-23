@@ -118,11 +118,27 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DiscordApiService.init(this)
+        val initialSection = parseDeepLinkSection(intent?.data)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                AppNavigation()
+                AppNavigation(initialSection = initialSection)
             }
+        }
+    }
+
+    private fun parseDeepLinkSection(uri: android.net.Uri?): NexusSection {
+        if (uri == null || uri.scheme != "nexus-tcg-engine" || uri.host != "open") {
+            return NexusSection.ENGINES
+        }
+        val requested = uri.getQueryParameter("section")?.trim()?.lowercase().orEmpty()
+        return when (requested) {
+            "settings", "hub" -> NexusSection.SETTINGS
+            "clients" -> NexusSection.CLIENTS
+            "decks" -> NexusSection.DECKS
+            "arena", "tabletop" -> NexusSection.ARENA
+            "discord", "discord_rp" -> NexusSection.DISCORD_RP
+            else -> if (uri.getQueryParameter("hubSync") == "1") NexusSection.SETTINGS else NexusSection.ENGINES
         }
     }
 }
@@ -172,7 +188,10 @@ enum class NexusSection(
 }
 
 @Composable
-fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
+fun AppNavigation(
+    auth: FirebaseAuth = Firebase.auth,
+    initialSection: NexusSection = NexusSection.ENGINES
+) {
     val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
     val user = currentUser
     if (user == null) {
@@ -185,7 +204,8 @@ fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
         key(uid) {
             NexusTcgMainScreen(
                 currentUserId = uid,
-                currentUserName = displayName
+                currentUserName = displayName,
+                initialSection = initialSection
             )
         }
     }
@@ -195,7 +215,8 @@ fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
 @Composable
 fun NexusTcgMainScreen(
     currentUserId: String,
-    currentUserName: String
+    currentUserName: String,
+    initialSection: NexusSection = NexusSection.ENGINES
 ) {
     val context = LocalContext.current
     remember(context) {
@@ -225,7 +246,7 @@ fun NexusTcgMainScreen(
     val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
 
-    var currentSection by rememberSaveable { mutableStateOf(NexusSection.ENGINES) }
+    var currentSection by rememberSaveable { mutableStateOf(initialSection) }
 
     if (currentSection != NexusSection.ENGINES) {
         BackHandler {
@@ -913,6 +934,7 @@ fun NexusTcgMainScreen(
                                 NexusSection.SETTINGS -> {
                                     SettingsScreen(
                                         discordEnvSettings = discordEnvSettings,
+                                        signedInAccountLabel = currentUserName,
                                         onToggleDiscordIntegration = { viewModel.setDiscordIntegrationEnabled(it) },
                                         onSaveDiscordEnvCredentials = { token, webhook, clientId, enabled ->
                                             viewModel.saveDiscordEnvCredentials(token, webhook, clientId, enabled)

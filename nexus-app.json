@@ -1,0 +1,31 @@
+{
+  "repo": "Summer-Warrior/Tcg-game-engine-test",
+  "displayName": "NexusTCG Engine",
+  "category": "TCG_CLIENT",
+  "distributionPolicy": "GITHUB_RELEASES_PUBLIC_PLAY_STORE_PERSONAL_ONLY",
+  "androidPackageName": "com.aistudio.nexustcg.vxqrmk",
+  "deepLinkScheme": "nexus-tcg-engine://open",
+  "githubLatestReleaseApi": "https://api.github.com/repos/Summer-Warrior/Tcg-game-engine-test/releases/latest",
+  "githubReleaseTag": "latest",
+  "installablePlatforms": [
+    "android"
+  ],
+  "browserOnlyFallback": true,
+  "webUrl": "https://summer-warrior.github.io/Tcg-game-engine-test/",
+  "linkedMasterHub": "Summer-Warrior/Project-MPV-RP-Master-Hub",
+  "masterHubWebUrl": "https://summer-warrior.github.io/Project-MPV-RP-Master-Hub/",
+  "masterHubDeepLinkScheme": "nexus-master-hub://open",
+  "masterHubAndroidPackage": "",
+  "linkedAssetVault": "Summer-Warrior/Asset-Holding-Software",
+  "linkedCardMaker": "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
+  "upstreamSourceLock": false,
+  "bridgeSchemaVersion": "1.0.0",
+  "hubIndexPath": "nexus-bridge/client-codestring-index.json",
+  "exportedPacksDir": "nexus-bridge/card-packs/",
+  "requiredDiscordLock": {
+    "mode": "DISCORD_SIGNED_IN",
+    "guildId": "",
+    "allowedRoleIds": [],
+    "allowedUserIds": []
+  }
+}

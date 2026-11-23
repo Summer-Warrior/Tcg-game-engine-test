@@ -1,0 +1,61 @@
+name: Auto-Release Android APK (Public GitHub Releases)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release-apk:
+    name: Build Debug APK & Publish Latest Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build Android Debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Prepare Public Release APK Artifact
+        run: |
+          APK_SOURCE="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK_SOURCE" ]; then
+            APK_SOURCE="$(find app/build/outputs/apk/debug -maxdepth 2 -name '*.apk' | head -n 1)"
+          fi
+          if [ -z "$APK_SOURCE" ] || [ ! -f "$APK_SOURCE" ]; then
+            echo "Error: Could not locate compiled debug APK." >&2
+            exit 1
+          fi
+          cp "$APK_SOURCE" "NexusTCG-Engine-latest.apk"
+          ls -lh "NexusTCG-Engine-latest.apk"
+
+      - name: Publish Latest GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: latest
+          name: NexusTCG Engine (Latest Android Build)
+          make_latest: true
+          body: |
+            Automated Android APK build for **NexusTCG Engine** (`Summer-Warrior/Tcg-game-engine-test`).
+
+            - **Distribution Policy:** Public GitHub Releases & Web Portal (`GITHUB_RELEASES_PUBLIC_PLAY_STORE_PERSONAL_ONLY`)
+            - **Android Deep Link:** `nexus-tcg-engine://open`
+            - **Web Portal & Platform Router:** https://summer-warrior.github.io/Tcg-game-engine-test/
+            - **Linked Master Hub:** https://summer-warrior.github.io/Project-MPV-RP-Master-Hub/
+          files: |
+            NexusTCG-Engine-latest.apk
+            nexus-app.json

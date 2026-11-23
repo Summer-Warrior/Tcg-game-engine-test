@@ -474,7 +474,7 @@ fun ClientSystemStandaloneScreen(
         )
     }
 
-    // For locked Base Clients ([[EDOPro]] & [[Forge]]), execute their upstream repository boot stages on open
+    // For locked Base Clients ([[EDOPro]] & [[Forge]]), load their upstream reference metadata immediately (zero fake boot animations)
     LaunchedEffect(activeBaseVariantId, bootRunNonce) {
         val spec = baseBootSpec
         if (spec == null) {
@@ -483,27 +483,12 @@ fun ClientSystemStandaloneScreen(
             bootElapsedMs = 0L
             return@LaunchedEffect
         }
-        isBootingRepoCode = true
-        completedBootStages = 0
-        bootElapsedMs = 0L
-        val startMs = System.currentTimeMillis()
-        protocolConsoleLogs.add(
-            0,
-            "[REPO_CODE_BOOT] Opening ${spec.shortTitle} via ${spec.primaryEntrypointFile} ($ ${spec.primaryLaunchCommand})"
-        )
-        for (stage in spec.stages) {
-            delay(240L)
-            completedBootStages = stage.stageOrder
-            protocolConsoleLogs.add(
-                0,
-                "[REPO_CODE_BOOT Stage ${stage.stageOrder}/${spec.stages.size}] ${stage.sourceFilePath} -> ${stage.runtimeResult}"
-            )
-        }
-        bootElapsedMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
         isBootingRepoCode = false
+        completedBootStages = spec.stages.size
+        bootElapsedMs = 0L
         protocolConsoleLogs.add(
             0,
-            "[CLIENT_READY] Opened ${spec.baseVariantId} using locked upstream code (${spec.exactGitHubRepoUrl}) in ${bootElapsedMs}ms."
+            "[LOCKED_UPSTREAM_REF] ${spec.shortTitle} (${spec.exactGitHubRepoUrl}) • Entrypoint: ${spec.primaryEntrypointFile} (Read-only upstream reference; direct launch via external URI/repo)."
         )
     }
 

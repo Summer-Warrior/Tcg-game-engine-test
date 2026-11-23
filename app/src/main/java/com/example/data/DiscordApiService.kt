@@ -69,10 +69,10 @@ data class DiscordEnvSettingsState(
     val envBotTokenDetected: Boolean = false,
     val envWebhookUrlDetected: Boolean = false,
     val usingRuntimeOverride: Boolean = false,
-    val lastVerificationStatus: String = "Ready — using .env structure (DISCORD_BOT_TOKEN & DISCORD_WEBHOOK_URL)"
+    val lastVerificationStatus: String = "Ready — Discord Webhook Bridge & OAuth2 Account-Lock (zero client-side Bot Tokens)"
 ) {
     val hasValidBotToken: Boolean
-        get() = integrationEnabled && botToken.isNotBlank()
+        get() = false
 
     val hasValidWebhookUrl: Boolean
         get() = integrationEnabled && isValidDiscordWebhookUrl(webhookUrl)
@@ -80,25 +80,19 @@ data class DiscordEnvSettingsState(
     val effectiveConnectionMode: String
         get() = when {
             !integrationEnabled -> "CLOUD_RP_RELAY"
-            hasValidBotToken && hasValidWebhookUrl -> "BOT_AND_WEBHOOK"
-            hasValidWebhookUrl || hasValidBotToken -> "WEBHOOK_PROXY"
+            hasValidWebhookUrl -> "WEBHOOK_PROXY"
             else -> "CLOUD_RP_RELAY"
         }
 
     fun toDotEnvPreview(maskSecrets: Boolean): String {
-        val displayedToken = when {
-            botToken.isBlank() -> "YOUR_DISCORD_BOT_TOKEN"
-            maskSecrets -> maskSecretValue(botToken)
-            else -> botToken
-        }
         val displayedWebhook = when {
             webhookUrl.isBlank() -> "YOUR_DISCORD_WEBHOOK_URL"
             maskSecrets -> maskSecretValue(webhookUrl)
             else -> webhookUrl
         }
         return buildString {
-            appendLine("# Discord Roleplay & TCG Character Bridge (.env structure)")
-            appendLine("DISCORD_BOT_TOKEN=$displayedToken")
+            appendLine("# Discord Webhook Broadcast Bridge (.env structure)")
+            appendLine("# Client-side Discord Bot Tokens and client_secret are strictly prohibited.")
             append("DISCORD_WEBHOOK_URL=$displayedWebhook")
         }
     }
@@ -163,16 +157,8 @@ object DiscordApiService {
     }
 
     private fun readBuildConfigBotToken(): String {
-        val raw = runCatching { BuildConfig.DISCORD_BOT_TOKEN }.getOrDefault("").trim()
-        return if (
-            raw.isEmpty() ||
-            raw.equals("null", ignoreCase = true) ||
-            raw.startsWith("YOUR_")
-        ) {
-            ""
-        } else {
-            raw
-        }
+        // Client-side Discord Bot Tokens are strictly prohibited.
+        return ""
     }
 
     private fun readBuildConfigWebhookUrl(): String {
@@ -190,14 +176,13 @@ object DiscordApiService {
     }
 
     private fun createInitialState(): DiscordEnvSettingsState {
-        val envToken = readBuildConfigBotToken()
         val envWebhook = readBuildConfigWebhookUrl()
         return DiscordEnvSettingsState(
             integrationEnabled = true,
-            botToken = envToken,
+            botToken = "",
             webhookUrl = envWebhook,
             botClientId = "1089000000000000000",
-            envBotTokenDetected = envToken.isNotEmpty(),
+            envBotTokenDetected = false,
             envWebhookUrlDetected = envWebhook.isNotEmpty(),
             usingRuntimeOverride = false
         )
@@ -206,37 +191,38 @@ object DiscordApiService {
     fun init(context: Context) {
         val sharedPrefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = sharedPrefs
-        val envToken = readBuildConfigBotToken()
+        // Scrub any legacy client-side Bot Token if previously saved
+        if (sharedPrefs.contains(KEY_BOT_TOKEN)) {
+            sharedPrefs.edit().remove(KEY_BOT_TOKEN).apply()
+        }
         val envWebhook = readBuildConfigWebhookUrl()
 
         val enabled = sharedPrefs.getBoolean(KEY_INTEGRATION_ENABLED, true)
         val hasOverride = sharedPrefs.getBoolean(KEY_HAS_RUNTIME_OVERRIDE, false)
-        val storedToken = sharedPrefs.getString(KEY_BOT_TOKEN, null)?.trim().orEmpty()
         val storedWebhook = sharedPrefs.getString(KEY_WEBHOOK_URL, null)?.trim().orEmpty()
         val storedClientId = sharedPrefs.getString(KEY_BOT_CLIENT_ID, "1089000000000000000")
             ?.trim()
             .orEmpty()
             .ifBlank { "1089000000000000000" }
 
-        val activeToken = if (hasOverride) storedToken else envToken
         val activeWebhook = if (hasOverride) storedWebhook else envWebhook
 
         _settingsState.value = DiscordEnvSettingsState(
             integrationEnabled = enabled,
-            botToken = activeToken,
+            botToken = "",
             webhookUrl = activeWebhook,
             botClientId = storedClientId,
-            envBotTokenDetected = envToken.isNotEmpty(),
+            envBotTokenDetected = false,
             envWebhookUrlDetected = envWebhook.isNotEmpty(),
             usingRuntimeOverride = hasOverride,
             lastVerificationStatus = if (!enabled) {
-                "Discord Bot & Webhook integration is toggled OFF (Cloud RP Relay only)."
-            } else if (hasOverride) {
-                "Active: Using custom .env credentials from Settings."
-            } else if (envToken.isNotEmpty() || envWebhook.isNotEmpty()) {
-                "Active: Loaded credentials from .env BuildConfig."
+                "Discord Webhook integration is toggled OFF (Cloud RP Relay only)."
+            } else if (hasOverride && activeWebhook.isNotEmpty()) {
+                "Active: Using custom Discord Webhook URL from Settings (zero client-side Bot Tokens)."
+            } else if (envWebhook.isNotEmpty()) {
+                "Active: Loaded DISCORD_WEBHOOK_URL from .env BuildConfig."
             } else {
-                "Cloud RP Relay active — enter DISCORD_BOT_TOKEN / DISCORD_WEBHOOK_URL below or in .env."
+                "Cloud RP Relay active — configure DISCORD_WEBHOOK_URL for live channel broadcasts."
             }
         )
 
@@ -290,8 +276,8 @@ object DiscordApiService {
     }
 
     /**
-     * Saves user-provided `DISCORD_BOT_TOKEN`, `DISCORD_WEBHOOK_URL`, and optional `DISCORD_CLIENT_ID`
-     * using the `.env` key structure.
+     * Saves user-provided `DISCORD_WEBHOOK_URL` and optional public `DISCORD_CLIENT_ID`.
+     * Never stores any client-side Discord Bot Token or client_secret.
      */
     fun updateEnvCredentials(
         botToken: String,
@@ -299,11 +285,6 @@ object DiscordApiService {
         botClientId: String = _settingsState.value.botClientId,
         integrationEnabled: Boolean = _settingsState.value.integrationEnabled
     ) {
-        val cleanToken = botToken.trim()
-            .removePrefix("DISCORD_BOT_TOKEN=")
-            .removePrefix("Bot ")
-            .trim()
-            .removeSurrounding("\"")
         val cleanWebhook = webhookUrl.trim()
             .removePrefix("DISCORD_WEBHOOK_URL=")
             .trim()
@@ -313,26 +294,25 @@ object DiscordApiService {
         prefs?.edit()?.apply {
             putBoolean(KEY_INTEGRATION_ENABLED, integrationEnabled)
             putBoolean(KEY_HAS_RUNTIME_OVERRIDE, true)
-            putString(KEY_BOT_TOKEN, cleanToken)
+            remove(KEY_BOT_TOKEN)
             putString(KEY_WEBHOOK_URL, cleanWebhook)
             putString(KEY_BOT_CLIENT_ID, cleanClientId)
             apply()
         }
 
-        val envToken = readBuildConfigBotToken()
         val envWebhook = readBuildConfigWebhookUrl()
         val nextState = DiscordEnvSettingsState(
             integrationEnabled = integrationEnabled,
-            botToken = cleanToken,
+            botToken = "",
             webhookUrl = cleanWebhook,
             botClientId = cleanClientId,
-            envBotTokenDetected = envToken.isNotEmpty(),
+            envBotTokenDetected = false,
             envWebhookUrlDetected = envWebhook.isNotEmpty(),
             usingRuntimeOverride = true,
             lastVerificationStatus = ""
         )
         val statusMsg = buildString {
-            append("Saved .env configuration -> Mode: ${nextState.effectiveConnectionMode}.")
+            append("Saved Webhook configuration -> Mode: ${nextState.effectiveConnectionMode}.")
             if (cleanWebhook.isNotEmpty() && !DiscordEnvSettingsState.isValidDiscordWebhookUrl(cleanWebhook)) {
                 append(" Note: Webhook URL should start with https://discord.com/api/webhooks/...")
             }
@@ -341,10 +321,9 @@ object DiscordApiService {
     }
 
     /**
-     * Resets runtime overrides back to the compile-time `.env` / `BuildConfig` values.
+     * Resets runtime overrides back to the compile-time `.env` / `BuildConfig` Webhook default.
      */
     fun resetToBuildConfigEnvDefaults() {
-        val envToken = readBuildConfigBotToken()
         val envWebhook = readBuildConfigWebhookUrl()
         prefs?.edit()?.apply {
             putBoolean(KEY_HAS_RUNTIME_OVERRIDE, false)
@@ -353,19 +332,16 @@ object DiscordApiService {
             apply()
         }
         _settingsState.value = _settingsState.value.copy(
-            botToken = envToken,
+            botToken = "",
             webhookUrl = envWebhook,
-            envBotTokenDetected = envToken.isNotEmpty(),
+            envBotTokenDetected = false,
             envWebhookUrlDetected = envWebhook.isNotEmpty(),
             usingRuntimeOverride = false,
-            lastVerificationStatus = "Reset to .env BuildConfig defaults (Bot Token: ${if (envToken.isNotEmpty()) "Detected" else "Unset"}, Webhook: ${if (envWebhook.isNotEmpty()) "Detected" else "Unset"})."
+            lastVerificationStatus = "Reset to .env BuildConfig defaults (Webhook: ${if (envWebhook.isNotEmpty()) "Detected" else "Unset"})."
         )
     }
 
-    fun getConfiguredBotToken(): String {
-        val state = _settingsState.value
-        return if (state.integrationEnabled) state.botToken else ""
-    }
+    fun getConfiguredBotToken(): String = ""
 
     fun getConfiguredWebhookUrl(): String {
         val state = _settingsState.value
@@ -402,8 +378,8 @@ object DiscordApiService {
 
         val token = getConfiguredBotToken()
         val webhook = getConfiguredWebhookUrl()
-        if (token.isEmpty() && webhook.isEmpty()) {
-            val msg = "No valid DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL configured. Operating in Cloud RP Relay mode."
+        if (webhook.isEmpty()) {
+            val msg = "No valid DISCORD_WEBHOOK_URL configured. Operating in Cloud RP Relay mode (zero client-side Bot Tokens)."
             _settingsState.value = state.copy(lastVerificationStatus = msg)
             return@withContext msg
         }
