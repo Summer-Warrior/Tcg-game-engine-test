@@ -1,0 +1,752 @@
+{
+  "entities": {
+    "TcgVariant": {
+      "title": "TcgVariant",
+      "description": "Defines a TCG engine ruleset variant, its base variant protocol specification, and 21-digit variable, function, and code-string registers for EDOPro Custom Project Clones.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the authenticated owner."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the TCG engine variant."
+        },
+        "baseVariantId": {
+          "type": "string",
+          "description": "Canonical base variant identifier required for client protocol compatibility."
+        },
+        "resourceName": {
+          "type": "string",
+          "description": "Name of the primary tactical resource (e.g. Summon/Chain, Mana, Energy, Flux)."
+        },
+        "startingLife": {
+          "type": "integer",
+          "description": "Initial player life total in this variant (64-bit integer projection)."
+        },
+        "startingHandSize": {
+          "type": "integer",
+          "description": "Initial cards drawn at match start."
+        },
+        "maxResourcePool": {
+          "type": "integer",
+          "description": "Maximum resource or zone cap per player."
+        },
+        "combatRule": {
+          "type": "string",
+          "description": "Combat resolution model (ATK_DEF_BATTLE, DIRECT_STRIKE, BLOCKER_ASSIGN, SHIELD_MATRIX)."
+        },
+        "isBaseStandard": {
+          "type": "boolean",
+          "description": "True if this variant strictly adheres to the unmodified base variant specification."
+        },
+        "protocolHash": {
+          "type": "string",
+          "description": "Deterministic compatibility signature for client handshake validation."
+        },
+        "maxDigitPrecision": {
+          "type": "integer",
+          "description": "Maximum supported numeric digit precision for variables, functions, and code strings (up to 21 digits for EDOPro Custom Clones)."
+        },
+        "startingLp21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string (^[0-9]{1,21}$) representing starting LP in EDOPro Custom Clones."
+        },
+        "customVarInput21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string (^[0-9]{1,21}$) for the custom project variable register."
+        },
+        "customFuncInput21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string (^[0-9]{1,21}$) for the custom project function input argument."
+        },
+        "customFuncName": {
+          "type": "string",
+          "description": "Identifier of the 21-digit custom function (e.g. ADD_21, MUL_21, SUB_21, MOD_21, SCALE_ATK_LP_21)."
+        },
+        "customFuncResult21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string result evaluated by the custom project function."
+        },
+        "customCodeString21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric code string (^[0-9]{1,21}$) for EDOPro script/card coding variables (c<21-digits>.lua)."
+        },
+        "customCodeVarExpr21": {
+          "type": "string",
+          "description": "Code string expression containing coding variables whose numerical digits are strictly capped at 21 digits."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "name",
+        "baseVariantId",
+        "resourceName",
+        "startingLife",
+        "startingHandSize",
+        "maxResourcePool",
+        "combatRule",
+        "isBaseStandard",
+        "protocolHash",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ClientNode": {
+      "title": "ClientNode",
+      "description": "Represents an external or peer TCG client included in the engine that connects when using its base variant or EDOPro Custom Clone with 21-digit variable, function, and code-string support.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the authenticated owner managing this client bridge."
+        },
+        "clientName": {
+          "type": "string",
+          "description": "Display name of the external TCG client."
+        },
+        "clientType": {
+          "type": "string",
+          "description": "Client platform or bridge type."
+        },
+        "endpointUri": {
+          "type": "string",
+          "description": "Endpoint address or relay channel URI for the client."
+        },
+        "baseVariantId": {
+          "type": "string",
+          "description": "The base variant ID required by this client to establish a connection."
+        },
+        "baseVariantName": {
+          "type": "string",
+          "description": "Human-readable name of the client's base variant."
+        },
+        "protocolVersion": {
+          "type": "string",
+          "description": "Protocol version string expected by the client."
+        },
+        "requiresStrictBase": {
+          "type": "boolean",
+          "description": "Whether the client enforces unmodified base variant parameters before connecting."
+        },
+        "connectionStatus": {
+          "type": "string",
+          "enum": ["DISCONNECTED", "CONNECTED", "MISMATCH_BLOCKED"],
+          "description": "Current connection state of the client node."
+        },
+        "latencyMs": {
+          "type": "integer",
+          "description": "Measured handshake round-trip latency in milliseconds."
+        },
+        "maxDigitPrecision": {
+          "type": "integer",
+          "description": "Maximum numeric digits supported by client variables, functions, and code strings (21 for EDOPro Custom Clone)."
+        },
+        "customVarInput21": {
+          "type": "string",
+          "description": "21-digit variable register value (^[0-9]{1,21}$) configured on the client."
+        },
+        "customFuncInput21": {
+          "type": "string",
+          "description": "21-digit function argument value (^[0-9]{1,21}$) configured on the client."
+        },
+        "customFuncName": {
+          "type": "string",
+          "description": "Active 21-digit function bound to the client."
+        },
+        "customFuncResult21": {
+          "type": "string",
+          "description": "21-digit output computed by the client function register."
+        },
+        "customCodeString21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric code string (^[0-9]{1,21}$) for EDOPro script/card coding variables."
+        },
+        "customCodeVarExpr21": {
+          "type": "string",
+          "description": "Code string expression with coding variables capped at 21 numerical digits."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when client was registered via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last status update via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "clientName",
+        "clientType",
+        "endpointUri",
+        "baseVariantId",
+        "baseVariantName",
+        "protocolVersion",
+        "requiresStrictBase",
+        "connectionStatus",
+        "latencyMs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CustomDeck": {
+      "title": "CustomDeck",
+      "description": "A user-built TCG deck and signature custom card bound to a specific base variant, supporting up to 21-digit ATK/DEF/variable/code-string inputs in EDOPro Custom Clones.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the deck owner."
+        },
+        "name": {
+          "type": "string",
+          "description": "Deck name."
+        },
+        "baseVariantId": {
+          "type": "string",
+          "description": "Target base variant ID this deck is legal in."
+        },
+        "strategyTag": {
+          "type": "string",
+          "description": "Tactical archetype tag."
+        },
+        "cardIds": {
+          "type": "array",
+          "description": "Bounded list of card template IDs included in the deck (max 40)."
+        },
+        "customCardName": {
+          "type": "string",
+          "description": "Name of the deck's forged signature card."
+        },
+        "customCardCost": {
+          "type": "integer",
+          "description": "Resource cost or Level/Rank of the signature card."
+        },
+        "customCardAttack": {
+          "type": "integer",
+          "description": "64-bit integer projection of Attack power."
+        },
+        "customCardDefense": {
+          "type": "integer",
+          "description": "64-bit integer projection of Defense power."
+        },
+        "customAttack21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string (^[0-9]{1,21}$) for custom card ATK."
+        },
+        "customDefense21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string (^[0-9]{1,21}$) for custom card DEF."
+        },
+        "customVarInput21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string passed to the card's ocgcore Lua script variables/functions."
+        },
+        "customCodeString21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric code string (^[0-9]{1,21}$) for the card's c<code_string>.lua identifier."
+        },
+        "customCodeVarExpr21": {
+          "type": "string",
+          "description": "Code string expression for coding variables with a strict 21-numerical-digit limit."
+        },
+        "customCardAbility": {
+          "type": "string",
+          "description": "Rules text ability of the signature card."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "name",
+        "baseVariantId",
+        "strategyTag",
+        "cardIds",
+        "customCardName",
+        "customCardCost",
+        "customCardAttack",
+        "customCardDefense",
+        "customCardAbility",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MatchSession": {
+      "title": "MatchSession",
+      "description": "A live multi-client TCG tabletop match session synced across connected base-variant clients.",
+      "type": "object",
+      "properties": {
+        "hostUserId": {
+          "type": "string",
+          "description": "UID of the user who created the match session."
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Display name of the host player."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the match room."
+        },
+        "baseVariantId": {
+          "type": "string",
+          "description": "Enforced base variant ID for all connected clients in this match."
+        },
+        "baseVariantName": {
+          "type": "string",
+          "description": "Human-readable name of the enforced base variant."
+        },
+        "resourceName": {
+          "type": "string",
+          "description": "Resource label for the match variant."
+        },
+        "connectedClients": {
+          "type": "array",
+          "description": "Bounded list of connected client node names participating in the session (max 10)."
+        },
+        "turnNumber": {
+          "type": "integer",
+          "description": "Current turn counter."
+        },
+        "activePhase": {
+          "type": "string",
+          "description": "Current turn phase (DRAW, MAIN, COMBAT, END)."
+        },
+        "hostLife": {
+          "type": "integer",
+          "description": "Current life total of the host player."
+        },
+        "opponentLife": {
+          "type": "integer",
+          "description": "Current life total of the connected client / opponent."
+        },
+        "hostResources": {
+          "type": "integer",
+          "description": "Available tactical resources for the host player."
+        },
+        "hostMaxResources": {
+          "type": "integer",
+          "description": "Maximum unlocked tactical resources for the host player."
+        },
+        "opponentResources": {
+          "type": "integer",
+          "description": "Available tactical resources for the opponent client."
+        },
+        "hostBoardCards": {
+          "type": "array",
+          "description": "Bounded list of serialized board unit descriptors for host (max 12)."
+        },
+        "opponentBoardCards": {
+          "type": "array",
+          "description": "Bounded list of serialized board unit descriptors for opponent client (max 12)."
+        },
+        "actionLog": {
+          "type": "array",
+          "description": "Bounded list of recent match & client protocol log entries (max 20)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["OPEN_LOBBY", "ACTIVE", "FINISHED"],
+          "description": "Lifecycle status of the match session."
+        },
+        "winnerName": {
+          "type": "string",
+          "description": "Name of the winner once status reaches FINISHED, or empty string while ongoing."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "hostUserId",
+        "hostName",
+        "title",
+        "baseVariantId",
+        "baseVariantName",
+        "resourceName",
+        "connectedClients",
+        "turnNumber",
+        "activePhase",
+        "hostLife",
+        "opponentLife",
+        "hostResources",
+        "hostMaxResources",
+        "opponentResources",
+        "hostBoardCards",
+        "opponentBoardCards",
+        "actionLog",
+        "status",
+        "winnerName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DiscordServerHub": {
+      "title": "DiscordServerHub",
+      "description": "Represents a Discord role-playing server and channel bridged to a NexusTCG engine variant.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the authenticated user."
+        },
+        "guildId": {
+          "type": "string",
+          "description": "Discord Guild Snowflake ID or server identifier."
+        },
+        "serverName": {
+          "type": "string",
+          "description": "Name of the Discord role-playing server."
+        },
+        "channelId": {
+          "type": "string",
+          "description": "Discord Text Channel Snowflake ID."
+        },
+        "channelName": {
+          "type": "string",
+          "description": "Channel display name (e.g. #duel-arena-rp)."
+        },
+        "baseVariantId": {
+          "type": "string",
+          "description": "TCG engine base variant used by this Discord RP server."
+        },
+        "rpLoreSetting": {
+          "type": "string",
+          "description": "Roleplay setting and TCG rules summary for this server."
+        },
+        "connectionMode": {
+          "type": "string",
+          "enum": ["BOT_AND_WEBHOOK", "WEBHOOK_PROXY", "CLOUD_RP_RELAY"],
+          "description": "Active Discord transport mode."
+        },
+        "isConnected": {
+          "type": "boolean",
+          "description": "Whether the server bridge is currently active."
+        },
+        "memberCount": {
+          "type": "integer",
+          "description": "Number of roleplayers/duelists in the Discord server."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "guildId",
+        "serverName",
+        "channelId",
+        "channelName",
+        "baseVariantId",
+        "rpLoreSetting",
+        "connectionMode",
+        "isConnected",
+        "memberCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RpCharacterPersona": {
+      "title": "RpCharacterPersona",
+      "description": "A TCG role-playing character persona used to act in-character and announce TCG plays in Discord servers.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the character owner."
+        },
+        "characterName": {
+          "type": "string",
+          "description": "In-character display name used in Discord messages."
+        },
+        "characterTitle": {
+          "type": "string",
+          "description": "Roleplay title or rank."
+        },
+        "factionOrArchetype": {
+          "type": "string",
+          "description": "Character's TCG deck archetype or faction."
+        },
+        "baseVariantId": {
+          "type": "string",
+          "description": "Primary TCG base variant this character duels in."
+        },
+        "signatureCardName": {
+          "type": "string",
+          "description": "Name of the character's ace/signature card."
+        },
+        "signatureCodeString21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric code string (^[0-9]{1,21}$) for the character's signature card."
+        },
+        "currentLp21": {
+          "type": "string",
+          "description": "Up to 21-digit numeric string (^[0-9]{1,21}$) tracking the character's current RP Life Points."
+        },
+        "personalityPrompt": {
+          "type": "string",
+          "description": "Roleplay demeanor and speaking style."
+        },
+        "openingCatchphrase": {
+          "type": "string",
+          "description": "In-character opening duel line."
+        },
+        "summonChant": {
+          "type": "string",
+          "description": "In-character chant spoken when summoning their signature card."
+        },
+        "isActivePersona": {
+          "type": "boolean",
+          "description": "Whether this character is the currently active proxy persona."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "characterName",
+        "characterTitle",
+        "factionOrArchetype",
+        "baseVariantId",
+        "signatureCardName",
+        "signatureCodeString21",
+        "currentLp21",
+        "personalityPrompt",
+        "openingCatchphrase",
+        "summonChant",
+        "isActivePersona",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DiscordRpMessage": {
+      "title": "DiscordRpMessage",
+      "description": "A Discord channel chat message or in-character TCG roleplay action reviewed or sent from NexusTCG.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the user managing this Discord RP feed."
+        },
+        "serverId": {
+          "type": "string",
+          "description": "ID of the target DiscordServerHub."
+        },
+        "channelName": {
+          "type": "string",
+          "description": "Target Discord channel name."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Character name or Discord username of the sender."
+        },
+        "senderTitle": {
+          "type": "string",
+          "description": "Roleplay title or Discord role badge of the sender."
+        },
+        "isCharacterProxy": {
+          "type": "boolean",
+          "description": "True if sent while acting as a TCG roleplay character."
+        },
+        "messageType": {
+          "type": "string",
+          "enum": ["RP_DIALOGUE", "TCG_DUEL_ACTION", "DISCORD_PEER_CHAT", "SYSTEM_SYNC"],
+          "description": "Category of the Discord RP message."
+        },
+        "content": {
+          "type": "string",
+          "description": "Message text or roleplay dialogue."
+        },
+        "tcgActionSummary": {
+          "type": "string",
+          "description": "Embedded TCG system state (LP, summoned card, 21-digit register/code string)."
+        },
+        "baseVariantId": {
+          "type": "string",
+          "description": "TCG base variant associated with the message."
+        },
+        "deliveryStatus": {
+          "type": "string",
+          "enum": ["DELIVERED_DISCORD_API", "DELIVERED_WEBHOOK", "SYNCED_RP_CHANNEL", "REVIEWED_FROM_DISCORD"],
+          "description": "Delivery or sync state with Discord."
+        },
+        "reviewedFlag": {
+          "type": "boolean",
+          "description": "Whether the message has been reviewed/verified for TCG roleplay rulings."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "serverId",
+        "channelName",
+        "senderName",
+        "senderTitle",
+        "isCharacterProxy",
+        "messageType",
+        "content",
+        "tcgActionSummary",
+        "baseVariantId",
+        "deliveryStatus",
+        "reviewedFlag",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MatchGameEvent": {
+      "title": "MatchGameEvent",
+      "description": "An immutable persistent game event log entry synchronized in real time via Firestore under a match session (e.g. 'Player 1 played card X', 'Life points reduced by 5').",
+      "type": "object",
+      "properties": {
+        "matchId": {
+          "type": "string",
+          "description": "Parent MatchSession document ID."
+        },
+        "actorUserId": {
+          "type": "string",
+          "description": "UID of the authenticated user whose client emitted the game event."
+        },
+        "actorLabel": {
+          "type": "string",
+          "description": "Display name or seat label of the player/client who performed the action."
+        },
+        "eventType": {
+          "type": "string",
+          "enum": ["CARD_PLAYED", "LIFE_CHANGED", "BOARD_MOVE", "COMBAT_ATTACK", "PHASE_CHANGED", "SYSTEM_SYNC", "CUSTOM_EVENT"],
+          "description": "Structured category of the game event."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Primary human-readable game event message (e.g. 'Player 1 played Card X' or 'Life points reduced by 5')."
+        },
+        "detail": {
+          "type": "string",
+          "description": "Optional secondary telemetry (zone coordinates, stats, or LP before/after)."
+        },
+        "turnNumber": {
+          "type": "integer",
+          "description": "Match turn number when the event occurred."
+        },
+        "activePhase": {
+          "type": "string",
+          "enum": ["DRAW", "MAIN", "COMBAT", "END"],
+          "description": "Active turn phase when the event occurred."
+        },
+        "cardName": {
+          "type": "string",
+          "description": "Card name associated with the event, or empty string if not card-specific."
+        },
+        "lifeDelta": {
+          "type": "integer",
+          "description": "Signed life point change associated with the event (e.g. -5, -1000, +500, or 0)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of event persistence via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "matchId",
+        "actorUserId",
+        "actorLabel",
+        "eventType",
+        "summary",
+        "detail",
+        "turnNumber",
+        "activePhase",
+        "cardName",
+        "lifeDelta",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/variants/{variantId}": {
+      "schema": { "$ref": "#/entities/TcgVariant" },
+      "description": "User-saved TCG engine variants and base-variant rule configurations."
+    },
+    "/users/{userId}/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/ClientNode" },
+      "description": "External and peer TCG clients registered by the user for base-variant connections."
+    },
+    "/users/{userId}/decks/{deckId}": {
+      "schema": { "$ref": "#/entities/CustomDeck" },
+      "description": "User-forged TCG decks and custom cards scoped to a base variant."
+    },
+    "/matches/{matchId}": {
+      "schema": { "$ref": "#/entities/MatchSession" },
+      "description": "Live multi-client TCG tabletop match sessions."
+    },
+    "/matches/{matchId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/MatchGameEvent" },
+      "description": "Persistent chronological game event log synchronized in real time between connected clients."
+    },
+    "/users/{userId}/discordServers/{serverId}": {
+      "schema": { "$ref": "#/entities/DiscordServerHub" },
+      "description": "Discord role-playing servers and channels bridged to the user's TCG engine."
+    },
+    "/users/{userId}/rpCharacters/{characterId}": {
+      "schema": { "$ref": "#/entities/RpCharacterPersona" },
+      "description": "Role-playing character personas for acting in-character in Discord TCG servers."
+    },
+    "/users/{userId}/discordMessages/{messageId}": {
+      "schema": { "$ref": "#/entities/DiscordRpMessage" },
+      "description": "Reviewed and sent Discord role-playing chat messages and TCG duel actions."
+    }
+  }
+}

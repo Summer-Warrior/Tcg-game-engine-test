@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">NexusTCG</string>
+    <string name="hero_subtitle">Multi-TCG Engine &amp; Base-Variant Client Bridge</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="sign_out">Sign out</string>
+    <string name="nav_engines">Engines</string>
+    <string name="nav_clients">Clients</string>
+    <string name="nav_decks">Deck Forge</string>
+    <string name="nav_tabletop">Arena</string>
+    <string name="nav_discord_rp">Discord RP</string>
+    <string name="nav_settings">Settings</string>
+    <string name="connect_base_variant">Sync Base Variant &amp; Connect</string>
+    <string name="register_client">Include External Client</string>
+    <string name="create_variant">New Engine Variant</string>
+    <string name="forge_deck">Forge Deck &amp; Card</string>
+    <string name="launch_match">Launch Multi-Client Arena</string>
+    <string name="join_discord_server">Join Discord RP Server</string>
+    <string name="create_rp_character">Forge RP Character</string>
+    <string name="realtime_sync_title">Firestore 2-Client State Sync</string>
+    <string name="realtime_sync_join_room">Join Room</string>
+    <string name="realtime_sync_join_dialog_title">Attach Client to Firestore Room</string>
+    <string name="persistent_event_log_title">Persistent Match Event Log</string>
+    <string name="persistent_event_log_input_hint">Log game event (e.g. Player 1 played Card X)...</string>
+    <string name="animated_health_hud_title">Live Vital Gauges (Firestore Sync)</string>
+</resources>

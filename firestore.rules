@@ -1,0 +1,549 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny catch-all (Pillar 1 / Phase 4.1)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidStringList(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is string);
+    }
+
+    // Validates a 1 to 21 digit non-negative integer string (0 .. 999,999,999,999,999,999,999)
+    function isValid21DigitNumber(val) {
+      return val is string && val.size() >= 1 && val.size() <= 21 && val.matches('^[0-9]{1,21}$');
+    }
+
+    // Validates coding variables for code strings: ensures any embedded numerical sequence is capped at 21 digits
+    function isValidCodeVarString21(val) {
+      return val is string && val.size() >= 1 && val.size() <= 240 && !val.matches('.*[0-9]{22}.*');
+    }
+
+    // 1. TcgVariant Validation Blueprint (Supports up to 21-digit variables, functions & code strings)
+    function isValidTcgVariant(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+             data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
+             data.resourceName is string && data.resourceName.size() >= 1 && data.resourceName.size() <= 30 &&
+             data.startingLife is int && data.startingLife >= 1 && data.startingLife <= 999999999999999999 &&
+             data.startingHandSize is int && data.startingHandSize >= 1 && data.startingHandSize <= 15 &&
+             data.maxResourcePool is int && data.maxResourcePool >= 1 && data.maxResourcePool <= 30 &&
+             data.combatRule is string && data.combatRule.size() >= 1 && data.combatRule.size() <= 40 &&
+             data.isBaseStandard is bool &&
+             data.protocolHash is string && data.protocolHash.size() >= 1 && data.protocolHash.size() <= 128 &&
+             (!('maxDigitPrecision' in data) || (data.maxDigitPrecision is int && data.maxDigitPrecision >= 1 && data.maxDigitPrecision <= 21)) &&
+             (!('startingLp21' in data) || isValid21DigitNumber(data.startingLp21)) &&
+             (!('customVarInput21' in data) || isValid21DigitNumber(data.customVarInput21)) &&
+             (!('customFuncInput21' in data) || isValid21DigitNumber(data.customFuncInput21)) &&
+             (!('customFuncName' in data) || (data.customFuncName is string && data.customFuncName.size() >= 1 && data.customFuncName.size() <= 40)) &&
+             (!('customFuncResult21' in data) || isValid21DigitNumber(data.customFuncResult21)) &&
+             (!('customCodeString21' in data) || isValid21DigitNumber(data.customCodeString21)) &&
+             (!('customCodeVarExpr21' in data) || isValidCodeVarString21(data.customCodeVarExpr21)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/variants/{variantId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(variantId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(variantId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'name', 'baseVariantId', 'resourceName',
+                         'startingLife', 'startingHandSize', 'maxResourcePool',
+                         'combatRule', 'isBaseStandard', 'protocolHash',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'name', 'baseVariantId', 'resourceName',
+                         'startingLife', 'startingHandSize', 'maxResourcePool',
+                         'combatRule', 'isBaseStandard', 'protocolHash',
+                         'maxDigitPrecision', 'startingLp21', 'customVarInput21',
+                         'customFuncInput21', 'customFuncName', 'customFuncResult21',
+                         'customCodeString21', 'customCodeVarExpr21',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidTcgVariant(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(variantId) &&
+                       isValidTcgVariant(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'baseVariantId', 'resourceName',
+                         'startingLife', 'startingHandSize', 'maxResourcePool',
+                         'combatRule', 'isBaseStandard', 'protocolHash',
+                         'maxDigitPrecision', 'startingLp21', 'customVarInput21',
+                         'customFuncInput21', 'customFuncName', 'customFuncResult21',
+                         'customCodeString21', 'customCodeVarExpr21',
+                         'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(variantId);
+    }
+
+    // 2. ClientNode Validation Blueprint (Supports 21-digit variable, function & code-string registers)
+    function isValidClientNode(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 60 &&
+             data.clientType is string && data.clientType.size() >= 1 && data.clientType.size() <= 40 &&
+             data.endpointUri is string && data.endpointUri.size() >= 1 && data.endpointUri.size() <= 120 &&
+             data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
+             data.baseVariantName is string && data.baseVariantName.size() >= 1 && data.baseVariantName.size() <= 60 &&
+             data.protocolVersion is string && data.protocolVersion.size() >= 1 && data.protocolVersion.size() <= 30 &&
+             data.requiresStrictBase is bool &&
+             data.connectionStatus is string &&
+             (data.connectionStatus == 'DISCONNECTED' || data.connectionStatus == 'CONNECTED' || data.connectionStatus == 'MISMATCH_BLOCKED') &&
+             data.latencyMs is int && data.latencyMs >= 0 && data.latencyMs <= 10000 &&
+             (!('maxDigitPrecision' in data) || (data.maxDigitPrecision is int && data.maxDigitPrecision >= 1 && data.maxDigitPrecision <= 21)) &&
+             (!('customVarInput21' in data) || isValid21DigitNumber(data.customVarInput21)) &&
+             (!('customFuncInput21' in data) || isValid21DigitNumber(data.customFuncInput21)) &&
+             (!('customFuncName' in data) || (data.customFuncName is string && data.customFuncName.size() >= 1 && data.customFuncName.size() <= 40)) &&
+             (!('customFuncResult21' in data) || isValid21DigitNumber(data.customFuncResult21)) &&
+             (!('customCodeString21' in data) || isValid21DigitNumber(data.customCodeString21)) &&
+             (!('customCodeVarExpr21' in data) || isValidCodeVarString21(data.customCodeVarExpr21)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/clients/{clientId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(clientId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(clientId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'clientName', 'clientType', 'endpointUri',
+                         'baseVariantId', 'baseVariantName', 'protocolVersion',
+                         'requiresStrictBase', 'connectionStatus', 'latencyMs',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'clientName', 'clientType', 'endpointUri',
+                         'baseVariantId', 'baseVariantName', 'protocolVersion',
+                         'requiresStrictBase', 'connectionStatus', 'latencyMs',
+                         'maxDigitPrecision', 'customVarInput21', 'customFuncInput21',
+                         'customFuncName', 'customFuncResult21',
+                         'customCodeString21', 'customCodeVarExpr21',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidClientNode(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(clientId) &&
+                       isValidClientNode(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'clientName', 'clientType', 'endpointUri',
+                         'baseVariantId', 'baseVariantName', 'protocolVersion',
+                         'requiresStrictBase', 'connectionStatus', 'latencyMs',
+                         'maxDigitPrecision', 'customVarInput21', 'customFuncInput21',
+                         'customFuncName', 'customFuncResult21',
+                         'customCodeString21', 'customCodeVarExpr21', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(clientId);
+    }
+
+    // 3. CustomDeck Validation Blueprint (Supports 21-digit custom ATK/DEF, variable & code-string seeds)
+    function isValidCustomDeck(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+             data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
+             data.strategyTag is string && data.strategyTag.size() >= 1 && data.strategyTag.size() <= 40 &&
+             isValidStringList(data.cardIds, 40) &&
+             data.customCardName is string && data.customCardName.size() >= 1 && data.customCardName.size() <= 60 &&
+             data.customCardCost is int && data.customCardCost >= 0 && data.customCardCost <= 20 &&
+             data.customCardAttack is int && data.customCardAttack >= 0 && data.customCardAttack <= 999999999999999999 &&
+             data.customCardDefense is int && data.customCardDefense >= 0 && data.customCardDefense <= 999999999999999999 &&
+             (!('customAttack21' in data) || isValid21DigitNumber(data.customAttack21)) &&
+             (!('customDefense21' in data) || isValid21DigitNumber(data.customDefense21)) &&
+             (!('customVarInput21' in data) || isValid21DigitNumber(data.customVarInput21)) &&
+             (!('customCodeString21' in data) || isValid21DigitNumber(data.customCodeString21)) &&
+             (!('customCodeVarExpr21' in data) || isValidCodeVarString21(data.customCodeVarExpr21)) &&
+             data.customCardAbility is string && data.customCardAbility.size() >= 1 && data.customCardAbility.size() <= 300 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/decks/{deckId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(deckId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(deckId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'name', 'baseVariantId', 'strategyTag', 'cardIds',
+                         'customCardName', 'customCardCost', 'customCardAttack',
+                         'customCardDefense', 'customCardAbility', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'name', 'baseVariantId', 'strategyTag', 'cardIds',
+                         'customCardName', 'customCardCost', 'customCardAttack',
+                         'customCardDefense', 'customAttack21', 'customDefense21',
+                         'customVarInput21', 'customCodeString21', 'customCodeVarExpr21',
+                         'customCardAbility', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidCustomDeck(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(deckId) &&
+                       isValidCustomDeck(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'baseVariantId', 'strategyTag', 'cardIds',
+                         'customCardName', 'customCardCost', 'customCardAttack',
+                         'customCardDefense', 'customAttack21', 'customDefense21',
+                         'customVarInput21', 'customCodeString21', 'customCodeVarExpr21',
+                         'customCardAbility', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(deckId);
+    }
+
+    // 4. MatchSession Validation Blueprint
+    function isValidMatchSession(data) {
+      return data.hostUserId is string && data.hostUserId.size() >= 1 && data.hostUserId.size() <= 128 &&
+             data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 60 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 80 &&
+             data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
+             data.baseVariantName is string && data.baseVariantName.size() >= 1 && data.baseVariantName.size() <= 60 &&
+             data.resourceName is string && data.resourceName.size() >= 1 && data.resourceName.size() <= 30 &&
+             isValidStringList(data.connectedClients, 10) &&
+             data.turnNumber is int && data.turnNumber >= 1 && data.turnNumber <= 500 &&
+             data.activePhase is string &&
+             (data.activePhase == 'DRAW' || data.activePhase == 'MAIN' || data.activePhase == 'COMBAT' || data.activePhase == 'END') &&
+             data.hostLife is int && data.hostLife >= -999999999999999999 && data.hostLife <= 999999999999999999 &&
+             data.opponentLife is int && data.opponentLife >= -999999999999999999 && data.opponentLife <= 999999999999999999 &&
+             data.hostResources is int && data.hostResources >= 0 && data.hostResources <= 30 &&
+             data.hostMaxResources is int && data.hostMaxResources >= 1 && data.hostMaxResources <= 30 &&
+             data.opponentResources is int && data.opponentResources >= 0 && data.opponentResources <= 30 &&
+             isValidStringList(data.hostBoardCards, 12) &&
+             isValidStringList(data.opponentBoardCards, 12) &&
+             isValidStringList(data.actionLog, 20) &&
+             data.status is string &&
+             (data.status == 'OPEN_LOBBY' || data.status == 'ACTIVE' || data.status == 'FINISHED') &&
+             data.winnerName is string && data.winnerName.size() <= 60 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /matches/{matchId} {
+      allow get: if isSignedIn() && isValidId(matchId) &&
+                    (existing().hostUserId == request.auth.uid || existing().status == 'OPEN_LOBBY' || existing().status == 'ACTIVE');
+
+      // Secure List Queries (Pillar 8): Explicitly requires hostUserId match or OPEN_LOBBY status filter
+      allow list: if isSignedIn() &&
+                     (existing().hostUserId == request.auth.uid || existing().status == 'OPEN_LOBBY');
+
+      allow create: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       incoming().hostUserId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'hostUserId', 'hostName', 'title', 'baseVariantId', 'baseVariantName',
+                         'resourceName', 'connectedClients', 'turnNumber', 'activePhase',
+                         'hostLife', 'opponentLife', 'hostResources', 'hostMaxResources',
+                         'opponentResources', 'hostBoardCards', 'opponentBoardCards',
+                         'actionLog', 'status', 'winnerName', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'hostUserId', 'hostName', 'title', 'baseVariantId', 'baseVariantName',
+                         'resourceName', 'connectedClients', 'turnNumber', 'activePhase',
+                         'hostLife', 'opponentLife', 'hostResources', 'hostMaxResources',
+                         'opponentResources', 'hostBoardCards', 'opponentBoardCards',
+                         'actionLog', 'status', 'winnerName', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidMatchSession(incoming());
+
+      // Terminal State Locking (Pillar 6) + Action-Based Updates (Pillar 5)
+      allow update: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       isValidMatchSession(incoming()) &&
+                       existing().status != 'FINISHED' &&
+                       incoming().hostUserId == existing().hostUserId &&
+                       incoming().baseVariantId == existing().baseVariantId &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Action 1: Host updates match state, board, turn, or connected clients
+                         (existing().hostUserId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'title', 'connectedClients', 'turnNumber', 'activePhase',
+                            'hostLife', 'opponentLife', 'hostResources', 'hostMaxResources',
+                            'opponentResources', 'hostBoardCards', 'opponentBoardCards',
+                            'actionLog', 'status', 'winnerName', 'updatedAt'
+                          ])) ||
+                         // Action 2: Authenticated peer client joins or syncs into an open/active match using the match's base variant
+                         ((existing().status == 'OPEN_LOBBY' || existing().status == 'ACTIVE') &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'connectedClients', 'turnNumber', 'activePhase',
+                            'hostLife', 'opponentLife', 'hostResources', 'hostMaxResources',
+                            'opponentResources', 'hostBoardCards', 'opponentBoardCards',
+                            'actionLog', 'status', 'winnerName', 'updatedAt'
+                          ]))
+                       );
+
+      allow delete: if isSignedIn() && isValidId(matchId) && existing().hostUserId == request.auth.uid;
+
+      // 4B. Persistent Game Event Log Subcollection (/matches/{matchId}/events/{eventId})
+      function isValidMatchGameEvent(data) {
+        return data.matchId is string && data.matchId == matchId &&
+               data.actorUserId is string && data.actorUserId == request.auth.uid &&
+               data.actorLabel is string && data.actorLabel.size() >= 1 && data.actorLabel.size() <= 60 &&
+               data.eventType is string &&
+               (data.eventType == 'CARD_PLAYED' || data.eventType == 'LIFE_CHANGED' ||
+                data.eventType == 'BOARD_MOVE' || data.eventType == 'COMBAT_ATTACK' ||
+                data.eventType == 'PHASE_CHANGED' || data.eventType == 'SYSTEM_SYNC' ||
+                data.eventType == 'CUSTOM_EVENT') &&
+               data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 240 &&
+               data.detail is string && data.detail.size() <= 240 &&
+               data.turnNumber is int && data.turnNumber >= 1 && data.turnNumber <= 500 &&
+               data.activePhase is string &&
+               (data.activePhase == 'DRAW' || data.activePhase == 'MAIN' ||
+                data.activePhase == 'COMBAT' || data.activePhase == 'END') &&
+               data.cardName is string && data.cardName.size() <= 80 &&
+               data.lifeDelta is int && data.lifeDelta >= -999999999999999999 && data.lifeDelta <= 999999999999999999 &&
+               data.createdAt is timestamp && data.createdAt <= request.time;
+      }
+
+      match /events/{eventId} {
+        allow get, list: if isSignedIn() &&
+                            isValidId(matchId) &&
+                            exists(/databases/$(database)/documents/matches/$(matchId)) &&
+                            (get(/databases/$(database)/documents/matches/$(matchId)).data.hostUserId == request.auth.uid ||
+                             get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'OPEN_LOBBY' ||
+                             get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'ACTIVE' ||
+                             get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'FINISHED');
+
+        allow create: if isSignedIn() &&
+                         isValidId(matchId) &&
+                         isValidId(eventId) &&
+                         exists(/databases/$(database)/documents/matches/$(matchId)) &&
+                         (get(/databases/$(database)/documents/matches/$(matchId)).data.hostUserId == request.auth.uid ||
+                          get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'OPEN_LOBBY' ||
+                          get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'ACTIVE') &&
+                         incoming().keys().hasAll([
+                           'matchId', 'actorUserId', 'actorLabel', 'eventType',
+                           'summary', 'detail', 'turnNumber', 'activePhase',
+                           'cardName', 'lifeDelta', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'matchId', 'actorUserId', 'actorLabel', 'eventType',
+                           'summary', 'detail', 'turnNumber', 'activePhase',
+                           'cardName', 'lifeDelta', 'createdAt'
+                         ]) &&
+                         isValidMatchGameEvent(incoming());
+
+        // Persistent event log entries are append-only (immutable once written)
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         isValidId(matchId) &&
+                         isValidId(eventId) &&
+                         exists(/databases/$(database)/documents/matches/$(matchId)) &&
+                         get(/databases/$(database)/documents/matches/$(matchId)).data.hostUserId == request.auth.uid;
+      }
+    }
+
+    // 5. DiscordServerHub Validation Blueprint
+    function isValidDiscordServerHub(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.guildId is string && data.guildId.size() >= 1 && data.guildId.size() <= 40 &&
+             data.serverName is string && data.serverName.size() >= 1 && data.serverName.size() <= 80 &&
+             data.channelId is string && data.channelId.size() >= 1 && data.channelId.size() <= 40 &&
+             data.channelName is string && data.channelName.size() >= 1 && data.channelName.size() <= 60 &&
+             data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
+             data.rpLoreSetting is string && data.rpLoreSetting.size() >= 1 && data.rpLoreSetting.size() <= 240 &&
+             data.connectionMode is string &&
+             (data.connectionMode == 'BOT_AND_WEBHOOK' || data.connectionMode == 'WEBHOOK_PROXY' || data.connectionMode == 'CLOUD_RP_RELAY') &&
+             data.isConnected is bool &&
+             data.memberCount is int && data.memberCount >= 1 && data.memberCount <= 1000000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/discordServers/{serverId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(serverId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(serverId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'guildId', 'serverName', 'channelId', 'channelName',
+                         'baseVariantId', 'rpLoreSetting', 'connectionMode',
+                         'isConnected', 'memberCount', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'guildId', 'serverName', 'channelId', 'channelName',
+                         'baseVariantId', 'rpLoreSetting', 'connectionMode',
+                         'isConnected', 'memberCount', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidDiscordServerHub(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(serverId) &&
+                       isValidDiscordServerHub(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'guildId', 'serverName', 'channelId', 'channelName',
+                         'baseVariantId', 'rpLoreSetting', 'connectionMode',
+                         'isConnected', 'memberCount', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(serverId);
+    }
+
+    // 6. RpCharacterPersona Validation Blueprint
+    function isValidRpCharacterPersona(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.characterName is string && data.characterName.size() >= 1 && data.characterName.size() <= 60 &&
+             data.characterTitle is string && data.characterTitle.size() >= 1 && data.characterTitle.size() <= 60 &&
+             data.factionOrArchetype is string && data.factionOrArchetype.size() >= 1 && data.factionOrArchetype.size() <= 60 &&
+             data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
+             data.signatureCardName is string && data.signatureCardName.size() >= 1 && data.signatureCardName.size() <= 60 &&
+             isValid21DigitNumber(data.signatureCodeString21) &&
+             isValid21DigitNumber(data.currentLp21) &&
+             data.personalityPrompt is string && data.personalityPrompt.size() >= 1 && data.personalityPrompt.size() <= 240 &&
+             data.openingCatchphrase is string && data.openingCatchphrase.size() >= 1 && data.openingCatchphrase.size() <= 200 &&
+             data.summonChant is string && data.summonChant.size() >= 1 && data.summonChant.size() <= 200 &&
+             data.isActivePersona is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/rpCharacters/{characterId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(characterId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(characterId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'characterName', 'characterTitle', 'factionOrArchetype',
+                         'baseVariantId', 'signatureCardName', 'signatureCodeString21',
+                         'currentLp21', 'personalityPrompt', 'openingCatchphrase',
+                         'summonChant', 'isActivePersona', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'characterName', 'characterTitle', 'factionOrArchetype',
+                         'baseVariantId', 'signatureCardName', 'signatureCodeString21',
+                         'currentLp21', 'personalityPrompt', 'openingCatchphrase',
+                         'summonChant', 'isActivePersona', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidRpCharacterPersona(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(characterId) &&
+                       isValidRpCharacterPersona(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'characterName', 'characterTitle', 'factionOrArchetype',
+                         'baseVariantId', 'signatureCardName', 'signatureCodeString21',
+                         'currentLp21', 'personalityPrompt', 'openingCatchphrase',
+                         'summonChant', 'isActivePersona', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(characterId);
+    }
+
+    // 7. DiscordRpMessage Validation Blueprint
+    function isValidDiscordRpMessage(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.serverId is string && data.serverId.size() >= 1 && data.serverId.size() <= 80 &&
+             data.channelName is string && data.channelName.size() >= 1 && data.channelName.size() <= 60 &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 60 &&
+             data.senderTitle is string && data.senderTitle.size() <= 60 &&
+             data.isCharacterProxy is bool &&
+             data.messageType is string &&
+             (data.messageType == 'RP_DIALOGUE' || data.messageType == 'TCG_DUEL_ACTION' || data.messageType == 'DISCORD_PEER_CHAT' || data.messageType == 'SYSTEM_SYNC') &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 500 &&
+             data.tcgActionSummary is string && data.tcgActionSummary.size() <= 240 &&
+             data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
+             data.deliveryStatus is string &&
+             (data.deliveryStatus == 'DELIVERED_DISCORD_API' || data.deliveryStatus == 'DELIVERED_WEBHOOK' || data.deliveryStatus == 'SYNCED_RP_CHANNEL' || data.deliveryStatus == 'REVIEWED_FROM_DISCORD') &&
+             data.reviewedFlag is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/discordMessages/{messageId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(messageId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(messageId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'serverId', 'channelName', 'senderName', 'senderTitle',
+                         'isCharacterProxy', 'messageType', 'content', 'tcgActionSummary',
+                         'baseVariantId', 'deliveryStatus', 'reviewedFlag',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'serverId', 'channelName', 'senderName', 'senderTitle',
+                         'isCharacterProxy', 'messageType', 'content', 'tcgActionSummary',
+                         'baseVariantId', 'deliveryStatus', 'reviewedFlag',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidDiscordRpMessage(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(messageId) &&
+                       isValidDiscordRpMessage(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'content', 'tcgActionSummary', 'deliveryStatus',
+                         'reviewedFlag', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(messageId);
+    }
+  }
+}

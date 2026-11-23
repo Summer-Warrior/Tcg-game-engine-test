@@ -1,0 +1,6 @@
+{
+  "name": "NexusTCG",
+  "description": "Multi-TCG engine and client bridge supporting custom rulesets, base-variant protocol verification, deck building, and live multi-client tabletop play.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
