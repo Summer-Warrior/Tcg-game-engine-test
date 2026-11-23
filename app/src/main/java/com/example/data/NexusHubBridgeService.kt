@@ -2,13 +2,23 @@ package com.example.data
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.util.Base64
+import com.example.engine.CatalogBlueprint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 enum class MutualLinkStatus(val displayLabel: String) {
@@ -17,6 +27,13 @@ enum class MutualLinkStatus(val displayLabel: String) {
     LINKED_OUT_OF_SYNC("LINKED_OUT_OF_SYNC"),
     LINKED_AND_CURRENT("LINKED_AND_CURRENT")
 }
+
+data class InstalledCardMakerInfo(
+    val isInstalled: Boolean,
+    val packageName: String,
+    val versionName: String,
+    val versionCode: Long
+)
 
 data class HubHandshakeReport(
     val status: MutualLinkStatus,
@@ -34,17 +51,45 @@ data class MasterHubLaunchResult(
     val statusMessage: String
 )
 
+data class LocalDualConsentState(
+    val gameEngineConsented: Boolean,
+    val cardMakerConsentedObserved: Boolean,
+    val schemaVersion: String,
+    val recordedAtUtc: String,
+    val recordedBy: String
+)
+
+data class GitHubCommitResult(
+    val success: Boolean,
+    val targetRepo: String,
+    val filePath: String,
+    val commitSha: String,
+    val httpCode: Int,
+    val retriedConflict: Boolean,
+    val message: String
+)
+
+data class PulledCardPacksResult(
+    val sourceRepo: String,
+    val branch: String,
+    val importedPacks: List<FederatedCardPack>,
+    val rejectedNotes: List<String>,
+    val summaryMessage: String
+)
+
 /**
- * Live Master Hub & Card Maker GitHub Bridge service.
+ * Live Master Hub & MPV Card Maker Bidirectional GitHub Bridge service.
  *
- * Uses the GitHub REST API with `X-GitHub-Api-Version: 2026-03-10` and
- * `Accept: application/vnd.github+json`. Strictly obeys:
- * - Public distribution via GitHub Releases & Web only (zero Play Store links).
- * - Zero client-side Discord Bot Tokens or client_secret.
- * - Strict Locked-Client Firewall (`upstreamSourceLock == false` for all exported targets).
+ * Uses GitHub REST API (`X-GitHub-Api-Version: 2026-03-10`, `Accept: application/vnd.github+json`).
+ * Strictly enforces:
+ * - Zero public Google Play Store URLs anywhere (uses local PackageManager detection for private install).
+ * - Zero client-side Discord Bot Tokens or `client_secret`.
+ * - Zero hardcoded GitHub PATs (PAT supplied at runtime only, never persisted unless explicitly opted in).
+ * - Strict Locked-Client Firewall (`upstreamSourceLock == false` for all writable exports & imports).
  */
 object NexusHubBridgeService {
     const val GITHUB_API_VERSION = "2026-03-10"
+    const val BRIDGE_SCHEMA_VERSION = "1.1.0"
     const val THIS_REPO = "Summer-Warrior/Tcg-game-engine-test"
     const val DISPLAY_NAME = "NexusTCG Engine"
     const val CATEGORY = "TCG_CLIENT"
@@ -58,21 +103,147 @@ object NexusHubBridgeService {
     const val MASTER_HUB_WEB_URL = "https://summer-warrior.github.io/Project-MPV-RP-Master-Hub/"
     const val MASTER_HUB_DEEP_LINK = "nexus-master-hub://open"
     const val LINKED_ASSET_VAULT = "Summer-Warrior/Asset-Holding-Software"
+
     const val LINKED_CARD_MAKER = "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated"
-    const val BRIDGE_SCHEMA_VERSION = "1.0.0"
-    const val HUB_INDEX_PATH = "nexus-bridge/client-codestring-index.json"
+    const val CARD_MAKER_ANDROID_PACKAGE = "com.aistudio.tcgstudio.kqrmvx"
+    const val CARD_MAKER_DEEP_LINK_BASE = "tcgstudio://nexus-hub"
+    const val CARD_MAKER_DEEP_LINK_SYNC = "tcgstudio://nexus-hub?hubSync=1&from=nexustcg"
+    const val CARD_MAKER_WEB_URL = "https://summer-warrior.github.io/MPV-TCG-Card-Making-Software-Updated/"
+
+    const val HUB_INDEX_PATH = "client-codestring-index.json"
+    const val MIRROR_INDEX_PATH = "nexus-bridge/client-codestring-index.json"
+    const val HANDSHAKE_CONTRACT_PATH = "handshake-contract.json"
     const val EXPORTED_PACKS_DIR = "nexus-bridge/card-packs/"
+
+    private const val PREFS_CONSENT = "nexus_tcg_dual_consent_prefs"
+    private const val KEY_ENGINE_CONSENTED = "engine_consented"
+    private const val KEY_CARD_MAKER_OBSERVED = "card_maker_consented_observed"
+    private const val KEY_CONSENT_SCHEMA = "consent_schema_version"
+    private const val KEY_CONSENT_AT = "consent_recorded_at_utc"
+    private const val KEY_CONSENT_BY = "consent_recorded_by"
+
+    private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .build()
     }
 
     /**
-     * Exact JSON representation of the root `nexus-app.json` contract.
+     * Checks local device installation of the private Play Store companion app
+     * (`com.aistudio.tcgstudio.kqrmvx`) using explicit `<queries>` declaration in AndroidManifest.
+     * NEVER constructs or opens any Google Play Store URL.
      */
+    @Suppress("DEPRECATION")
+    fun detectInstalledCardMakerApp(context: Context): InstalledCardMakerInfo {
+        return runCatching {
+            val pm = context.packageManager
+            val pkgInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(CARD_MAKER_ANDROID_PACKAGE, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                pm.getPackageInfo(CARD_MAKER_ANDROID_PACKAGE, 0)
+            }
+            val vCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pkgInfo.longVersionCode
+            } else {
+                pkgInfo.versionCode.toLong()
+            }
+            InstalledCardMakerInfo(
+                isInstalled = true,
+                packageName = CARD_MAKER_ANDROID_PACKAGE,
+                versionName = pkgInfo.versionName ?: "installed",
+                versionCode = vCode
+            )
+        }.getOrElse {
+            InstalledCardMakerInfo(
+                isInstalled = false,
+                packageName = CARD_MAKER_ANDROID_PACKAGE,
+                versionName = "",
+                versionCode = 0L
+            )
+        }
+    }
+
+    /**
+     * Opens the installed MPV Card Maker Android app directly via `tcgstudio://nexus-hub?hubSync=1&from=nexustcg`
+     * (or package launch intent), falling back cleanly to the GitHub Pages web app URL.
+     */
+    fun openCardMakerAppForHandshake(context: Context): MasterHubLaunchResult {
+        val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse(CARD_MAKER_DEEP_LINK_SYNC)).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (deepLinkIntent.resolveActivity(context.packageManager) != null) {
+            if (runCatching { context.startActivity(deepLinkIntent) }.isSuccess) {
+                return MasterHubLaunchResult(
+                    launchedNativeApp = true,
+                    launchedUrlOrUri = CARD_MAKER_DEEP_LINK_SYNC,
+                    statusMessage = "Opened MPV Card Maker app via $CARD_MAKER_DEEP_LINK_SYNC."
+                )
+            }
+        }
+
+        val pkgLaunch = context.packageManager.getLaunchIntentForPackage(CARD_MAKER_ANDROID_PACKAGE)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra("hubSync", "1")
+            putExtra("sourceRepo", THIS_REPO)
+        }
+        if (pkgLaunch != null && runCatching { context.startActivity(pkgLaunch) }.isSuccess) {
+            return MasterHubLaunchResult(
+                launchedNativeApp = true,
+                launchedUrlOrUri = CARD_MAKER_ANDROID_PACKAGE,
+                statusMessage = "Launched installed MPV Card Maker package ($CARD_MAKER_ANDROID_PACKAGE)."
+            )
+        }
+
+        val webUrl = "$CARD_MAKER_WEB_URL?hubSync=1&from=nexustcg"
+        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(webUrl)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val webOk = runCatching { context.startActivity(webIntent) }.isSuccess
+        return MasterHubLaunchResult(
+            launchedNativeApp = false,
+            launchedUrlOrUri = webUrl,
+            statusMessage = if (webOk) {
+                "MPV Card Maker Android app not detected locally; opened Web Portal at $webUrl."
+            } else {
+                "Could not launch browser for $webUrl."
+            }
+        )
+    }
+
+    fun getLocalConsentState(context: Context): LocalDualConsentState {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_CONSENT, Context.MODE_PRIVATE)
+        return LocalDualConsentState(
+            gameEngineConsented = prefs.getBoolean(KEY_ENGINE_CONSENTED, true),
+            cardMakerConsentedObserved = prefs.getBoolean(KEY_CARD_MAKER_OBSERVED, false),
+            schemaVersion = prefs.getString(KEY_CONSENT_SCHEMA, BRIDGE_SCHEMA_VERSION) ?: BRIDGE_SCHEMA_VERSION,
+            recordedAtUtc = prefs.getString(KEY_CONSENT_AT, currentIsoUtc()) ?: currentIsoUtc(),
+            recordedBy = prefs.getString(KEY_CONSENT_BY, "NexusTCG Engine Operator") ?: "NexusTCG Engine Operator"
+        )
+    }
+
+    fun setLocalConsentState(
+        context: Context,
+        gameEngineConsented: Boolean,
+        cardMakerConsentedObserved: Boolean = getLocalConsentState(context).cardMakerConsentedObserved,
+        recordedBy: String = "NexusTCG Engine Operator"
+    ): LocalDualConsentState {
+        val now = currentIsoUtc()
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_CONSENT, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean(KEY_ENGINE_CONSENTED, gameEngineConsented)
+            .putBoolean(KEY_CARD_MAKER_OBSERVED, cardMakerConsentedObserved)
+            .putString(KEY_CONSENT_SCHEMA, BRIDGE_SCHEMA_VERSION)
+            .putString(KEY_CONSENT_AT, now)
+            .putString(KEY_CONSENT_BY, recordedBy.trim().ifEmpty { "NexusTCG Engine Operator" })
+            .apply()
+        return getLocalConsentState(context)
+    }
+
     fun buildNexusAppManifestJson(): String {
         val root = JSONObject().apply {
             put("repo", THIS_REPO)
@@ -92,9 +263,13 @@ object NexusHubBridgeService {
             put("masterHubAndroidPackage", "")
             put("linkedAssetVault", LINKED_ASSET_VAULT)
             put("linkedCardMaker", LINKED_CARD_MAKER)
+            put("cardMakerAndroidPackage", CARD_MAKER_ANDROID_PACKAGE)
+            put("cardMakerDeepLinkScheme", CARD_MAKER_DEEP_LINK_BASE)
             put("upstreamSourceLock", false)
             put("bridgeSchemaVersion", BRIDGE_SCHEMA_VERSION)
             put("hubIndexPath", HUB_INDEX_PATH)
+            put("mirrorIndexPath", MIRROR_INDEX_PATH)
+            put("handshakeContractPath", HANDSHAKE_CONTRACT_PATH)
             put("exportedPacksDir", EXPORTED_PACKS_DIR)
             put(
                 "requiredDiscordLock",
@@ -109,100 +284,252 @@ object NexusHubBridgeService {
         return root.toString(2)
     }
 
-    /**
-     * Generates the non-locked code-string metadata export payload for
-     * `Summer-Warrior/MPV-TCG-Card-Making-Software-Updated`.
-     *
-     * Locked upstream GitHub clients (`EDOPRO_BASE_MR5`, `FORGE_MTG_BASE`) are placed strictly
-     * inside `readOnlyLockedReferences` with `upstreamSourceLock = true` and excluded from
-     * `nonLockedWritableClients`.
-     */
-    fun buildNonLockedCodeStringExportJson(): String {
-        val nonLockedArray = JSONArray()
-        val lockedRefArray = JSONArray()
-
-        CardCodeValidator.canonicalTargetCatalog.forEach { target ->
-            val obj = JSONObject().apply {
-                put("clientId", target.clientId)
-                put("displayName", target.displayName)
-                put("upstreamSourceLock", target.upstreamSourceLock)
-                put("upstreamRepo", target.upstreamRepo)
-                if (!target.upstreamSourceLock) {
-                    put("idFormat", "^[0-9]{1,21}$ | UUID")
-                    put("maxRegisterDigits", 21)
-                    put("allowTimeTravelFlagsOnMatchCards", false)
-                    put("allowedMatchTemporalEffects", JSONArray(listOf("End Turn", "Extra Turn")))
-                    put("dossierOnlyFilters", JSONArray(listOf(19, 20, 21)))
-                    put("scriptTemplate", "c<21-digits>.lua")
-                } else {
-                    put("writable", false)
-                    put("suggestedNonLockedForkId", target.suggestedNonLockedForkId ?: "ULTIMATE_TCG_21DIGIT_FORK")
-                }
-            }
-            if (target.upstreamSourceLock) {
-                lockedRefArray.put(obj)
-            } else {
-                nonLockedArray.put(obj)
-            }
-        }
-
-        val pieColorsArray = JSONArray()
-        TwentyColorPieCatalog.wheelColors.forEach { c ->
-            pieColorsArray.put(
-                JSONObject().apply {
-                    put("index", c.wheelIndex)
-                    put("code", c.code)
-                    put("name", c.name)
-                    put("anchor", c.isAnchor)
-                    put("pip", c.pip)
-                }
-            )
-        }
-
-        val payload = JSONObject().apply {
-            put("bridgeSchemaVersion", BRIDGE_SCHEMA_VERSION)
-            put("sourceRepo", THIS_REPO)
-            put("targetCardMakerRepo", LINKED_CARD_MAKER)
-            put("linkedMasterHub", LINKED_MASTER_HUB)
-            put("upstreamSourceLock", false)
-            put("allowTimeTravelFlagsOnMatchCards", false)
-            put("nonLockedWritableClients", nonLockedArray)
-            put("readOnlyLockedReferences", lockedRefArray)
-            put(
-                "twentyColorPieGrammar",
-                JSONObject().apply {
-                    put("defaultSelectedCount", 0)
-                    put("colorlessPip", TwentyColorPieCatalog.COLORLESS_PIP)
-                    put("layer20OmniPip", TwentyColorPieCatalog.OMNICHROMA_PIP)
-                    put("layer20OmniName", TwentyColorPieCatalog.OMNICHROMA_NAME)
-                    put("pairCount", TwentyColorPieCatalog.all190FusedPairs.size)
-                    put("curatedTrioCount", TwentyColorPieCatalog.curatedLayer3Trios.size)
-                    put("layer19Count", TwentyColorPieCatalog.layer19AllMinusOne.size)
-                    put("valueStates", JSONArray(listOf(":T", ":S", ":M")))
-                    put("wheelColors", pieColorsArray)
-                }
-            )
-        }
-        return payload.toString(2)
+    fun buildNonLockedCodeStringExportJson(
+        additionalNonLockedCombos: List<CatalogBlueprint> = emptyList()
+    ): String {
+        return CodeStringExporter.compileClientCodeStringIndexJson(additionalNonLockedCombos)
     }
 
     /**
-     * Checks live mutual repository links between this repo, Project-MPV-RP-Master-Hub,
-     * and MPV-TCG-Card-Making-Software-Updated using GitHub REST API (`2026-03-10`).
+     * Option A — Direct GitHub Commit (GET existing file SHA + Base64 PUT) with 409/422 conflict retry.
+     * PAT is used strictly in-memory for this HTTP call and NEVER hardcoded or logged.
      */
+    suspend fun commitFileToGitHubRepo(
+        ownerRepo: String,
+        branch: String,
+        filePath: String,
+        contentUtf8: String,
+        commitMessage: String,
+        fineGrainedPat: String,
+        mutualLinkVerified: Boolean
+    ): GitHubCommitResult = withContext(Dispatchers.IO) {
+        val cleanPat = fineGrainedPat.trim()
+        if (!mutualLinkVerified) {
+            return@withContext GitHubCommitResult(
+                success = false,
+                targetRepo = ownerRepo,
+                filePath = filePath,
+                commitSha = "",
+                httpCode = 0,
+                retriedConflict = false,
+                message = "Direct commit blocked: mutual repository link must be verified first (use Option B Copy/Export or verify handshake)."
+            )
+        }
+        if (cleanPat.isEmpty()) {
+            return@withContext GitHubCommitResult(
+                success = false,
+                targetRepo = ownerRepo,
+                filePath = filePath,
+                commitSha = "",
+                httpCode = 0,
+                retriedConflict = false,
+                message = "Enter a Fine-Grained GitHub PAT (Contents: Read & Write) to commit directly, or use zero-token Copy/Share."
+            )
+        }
+
+        val cleanPath = filePath.trimStart('/')
+        val cleanBranch = branch.trim().ifEmpty { "main" }
+        val encodedContent = Base64.encodeToString(contentUtf8.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+
+        suspend fun attemptPut(existingSha: String?): Pair<Int, String> {
+            val payload = JSONObject().apply {
+                put("message", commitMessage.trim().ifEmpty { "chore(nexus-bridge): sync $cleanPath" })
+                put("content", encodedContent)
+                put("branch", cleanBranch)
+                if (!existingSha.isNullOrBlank()) {
+                    put("sha", existingSha)
+                }
+            }
+            val req = Request.Builder()
+                .url("https://api.github.com/repos/$ownerRepo/contents/$cleanPath")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+                .header("Authorization", "Bearer $cleanPat")
+                .header("User-Agent", "NexusTCG-Engine-Android/3.0")
+                .put(payload.toString().toRequestBody(JSON_MEDIA))
+                .build()
+            return httpClient.newCall(req).execute().use { resp ->
+                resp.code to (resp.body?.string().orEmpty())
+            }
+        }
+
+        runCatching {
+            val firstSha = fetchFileBlobSha(ownerRepo, cleanBranch, cleanPath, cleanPat)
+            val (code1, body1) = attemptPut(firstSha)
+            if (code1 in 200..299) {
+                val commitSha = runCatching {
+                    JSONObject(body1).optJSONObject("commit")?.optString("sha", "").orEmpty()
+                }.getOrDefault("")
+                return@withContext GitHubCommitResult(
+                    success = true,
+                    targetRepo = ownerRepo,
+                    filePath = cleanPath,
+                    commitSha = commitSha,
+                    httpCode = code1,
+                    retriedConflict = false,
+                    message = "Committed $cleanPath to $ownerRepo@$cleanBranch (${commitSha.take(7)})."
+                )
+            }
+
+            // 409/422 Conflict recovery: re-fetch latest blob SHA and retry once
+            if (code1 == 409 || code1 == 422) {
+                val refreshedSha = fetchFileBlobSha(ownerRepo, cleanBranch, cleanPath, cleanPat)
+                val (code2, body2) = attemptPut(refreshedSha)
+                if (code2 in 200..299) {
+                    val commitSha = runCatching {
+                        JSONObject(body2).optJSONObject("commit")?.optString("sha", "").orEmpty()
+                    }.getOrDefault("")
+                    return@withContext GitHubCommitResult(
+                        success = true,
+                        targetRepo = ownerRepo,
+                        filePath = cleanPath,
+                        commitSha = commitSha,
+                        httpCode = code2,
+                        retriedConflict = true,
+                        message = "Resolved HTTP $code1 conflict and committed $cleanPath (${commitSha.take(7)})."
+                    )
+                }
+                return@withContext GitHubCommitResult(
+                    success = false,
+                    targetRepo = ownerRepo,
+                    filePath = cleanPath,
+                    commitSha = "",
+                    httpCode = code2,
+                    retriedConflict = true,
+                    message = "Conflict retry failed (HTTP $code2). Use Option B Copy/Export JSON instead."
+                )
+            }
+
+            GitHubCommitResult(
+                success = false,
+                targetRepo = ownerRepo,
+                filePath = cleanPath,
+                commitSha = "",
+                httpCode = code1,
+                retriedConflict = false,
+                message = "GitHub commit returned HTTP $code1 for $ownerRepo/$cleanPath."
+            )
+        }.getOrElse { err ->
+            GitHubCommitResult(
+                success = false,
+                targetRepo = ownerRepo,
+                filePath = cleanPath,
+                commitSha = "",
+                httpCode = 0,
+                retriedConflict = false,
+                message = "Network error during GitHub commit: ${err.javaClass.simpleName}"
+            )
+        }
+    }
+
+    /**
+     * Pulls coded Card Packs JSON files from `Summer-Warrior/MPV-TCG-Card-Making-Software-Updated`
+     * (checking `nexus-bridge/card-packs` and `card-packs`) and validates every card through
+     * `CodeStringExporter.validateAndParseCardPackJson(...)`.
+     */
+    suspend fun pullCardPacksFromCardMaker(
+        ownerRepo: String = LINKED_CARD_MAKER,
+        branch: String = "main",
+        searchDirs: List<String> = listOf("nexus-bridge/card-packs", "card-packs")
+    ): PulledCardPacksResult = withContext(Dispatchers.IO) {
+        val imported = mutableListOf<FederatedCardPack>()
+        val rejected = mutableListOf<String>()
+
+        for (dir in searchDirs) {
+            val cleanDir = dir.trim().trim('/')
+            val listingJson = fetchGitHubApiJson(
+                "https://api.github.com/repos/$ownerRepo/contents/$cleanDir?ref=$branch"
+            ) ?: continue
+
+            val itemsArr = runCatching { JSONArray(listingJson) }.getOrNull() ?: continue
+            for (i in 0 until itemsArr.length().coerceAtMost(20)) {
+                val entry = itemsArr.optJSONObject(i) ?: continue
+                val fileName = entry.optString("name", "")
+                val filePath = entry.optString("path", "")
+                if (!fileName.endsWith(".json", ignoreCase = true) || filePath.isBlank()) continue
+
+                val rawPack = fetchGitHubRawFile(ownerRepo, filePath, branch) ?: continue
+                val report = CodeStringExporter.validateAndParseCardPackJson(rawPack)
+                if (report.rejectedReasons.isNotEmpty()) {
+                    rejected.addAll(report.rejectedReasons.map { "$fileName: $it" })
+                }
+                if (report.acceptedCards.isNotEmpty()) {
+                    val rootObj = runCatching { JSONObject(rawPack) }.getOrNull()
+                    imported.add(
+                        FederatedCardPack(
+                            packId = report.packId,
+                            packName = report.packName,
+                            targetClientId = rootObj?.optString("targetClientId", "ULTIMATE_TCG_WIP") ?: "ULTIMATE_TCG_WIP",
+                            upstreamSourceLock = false,
+                            cards = report.acceptedCards
+                        )
+                    )
+                }
+            }
+        }
+
+        val totalCards = imported.sumOf { it.cards.size }
+        val summary = when {
+            imported.isNotEmpty() ->
+                "Pulled ${imported.size} validated card pack(s) ($totalCards non-locked card(s)) from $ownerRepo@$branch."
+            rejected.isNotEmpty() ->
+                "Pull completed with ${rejected.size} firewall/validation rejection(s); 0 packs accepted."
+            else ->
+                "No remote JSON card packs found yet in $ownerRepo@$branch (${searchDirs.joinToString(", ")}). Bundled starter packs remain active."
+        }
+        PulledCardPacksResult(
+            sourceRepo = ownerRepo,
+            branch = branch,
+            importedPacks = imported,
+            rejectedNotes = rejected,
+            summaryMessage = summary
+        )
+    }
+
+    /**
+     * Option B — Zero-Token mobile export via Android Share Sheet (JSON / YAML / Markdown).
+     */
+    fun shareTextArtifact(
+        context: Context,
+        title: String,
+        content: String,
+        mimeType: String = "text/plain"
+    ): Boolean {
+        return runCatching {
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_SUBJECT, title)
+                putExtra(Intent.EXTRA_TITLE, title)
+                putExtra(Intent.EXTRA_TEXT, content)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(sendIntent, "Export $title").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun verifyMutualRepoHandshake(): HubHandshakeReport = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val hubRepoExists = checkGitHubEndpointOk("https://api.github.com/repos/$LINKED_MASTER_HUB")
         val cardMakerExists = checkGitHubEndpointOk("https://api.github.com/repos/$LINKED_CARD_MAKER")
         val hubIndexBody = fetchGitHubRawFile(LINKED_MASTER_HUB, HUB_INDEX_PATH)
-        val hubManifestBody = fetchGitHubRawFile(LINKED_MASTER_HUB, "nexus-app.json")
-            ?: fetchGitHubRawFile(LINKED_MASTER_HUB, "nexus-repo-link.json")
+            ?: fetchGitHubRawFile(LINKED_MASTER_HUB, MIRROR_INDEX_PATH)
+        val hubManifestBody = fetchGitHubRawFile(LINKED_MASTER_HUB, "nexus-repo-link.json")
+            ?: fetchGitHubRawFile(LINKED_MASTER_HUB, "nexus-app.json")
+            ?: fetchGitHubRawFile(LINKED_MASTER_HUB, "public/registry/repo-bridge.json")
+        val cardMakerManifestBody = fetchGitHubRawFile(LINKED_CARD_MAKER, "nexus-repo-link.json")
+            ?: fetchGitHubRawFile(LINKED_CARD_MAKER, "handshake-contract.json")
 
         val discoveredClients = mutableListOf<String>()
         if (hubIndexBody != null) {
             runCatching {
                 val obj = JSONObject(hubIndexBody)
-                val clients = obj.optJSONArray("clients") ?: obj.optJSONArray("nonLockedWritableClients")
+                val clients = obj.optJSONArray("nonLockedClients")
+                    ?: obj.optJSONArray("clients")
+                    ?: obj.optJSONArray("nonLockedWritableClients")
                 if (clients != null) {
                     for (i in 0 until clients.length()) {
                         val entry = clients.optJSONObject(i) ?: continue
@@ -217,23 +544,24 @@ object NexusHubBridgeService {
 
         val hubLinksBack = (hubManifestBody?.contains(THIS_REPO, ignoreCase = true) == true) ||
             (hubIndexBody?.contains(THIS_REPO, ignoreCase = true) == true)
+        val cardMakerLinksBack = cardMakerManifestBody?.contains(THIS_REPO, ignoreCase = true) == true
 
         val status = when {
-            !hubRepoExists -> MutualLinkStatus.UNLINKED
-            !hubLinksBack -> MutualLinkStatus.ONE_WAY_ONLY
-            hubIndexBody == null -> MutualLinkStatus.LINKED_OUT_OF_SYNC
+            !hubRepoExists && !cardMakerExists -> MutualLinkStatus.UNLINKED
+            !hubLinksBack && !cardMakerLinksBack -> MutualLinkStatus.ONE_WAY_ONLY
+            hubIndexBody == null && !cardMakerLinksBack -> MutualLinkStatus.LINKED_OUT_OF_SYNC
             else -> MutualLinkStatus.LINKED_AND_CURRENT
         }
 
         val message = when (status) {
             MutualLinkStatus.UNLINKED ->
-                "Unable to verify $LINKED_MASTER_HUB via GitHub REST API (offline, private, or rate-limited)."
+                "Unable to reach linked repositories via GitHub REST API (offline, private, or rate-limited)."
             MutualLinkStatus.ONE_WAY_ONLY ->
-                "Master Hub repo reachable; waiting for $LINKED_MASTER_HUB to reference $THIS_REPO in its manifest/index."
+                "Linked repos reachable; waiting for $LINKED_CARD_MAKER or $LINKED_MASTER_HUB to reference $THIS_REPO."
             MutualLinkStatus.LINKED_OUT_OF_SYNC ->
-                "Mutual repo link detected, but $HUB_INDEX_PATH was not yet found on Master Hub."
+                "Mutual repo link detected, but index or Card Maker manifest needs sync."
             MutualLinkStatus.LINKED_AND_CURRENT ->
-                "Mutual link verified with $LINKED_MASTER_HUB (${discoveredClients.size} non-locked client entries indexed)."
+                "Mutual link verified (${discoveredClients.size} non-locked client entries indexed)."
         }
 
         HubHandshakeReport(
@@ -247,11 +575,6 @@ object NexusHubBridgeService {
         )
     }
 
-    /**
-     * Checks whether the installed Master Hub Android app handles `nexus-master-hub://open`
-     * (enabled via `<queries>` in AndroidManifest.xml) and launches it directly if present,
-     * falling back cleanly to the Master Hub Web Portal URL.
-     */
     fun openMasterHub(context: Context): MasterHubLaunchResult {
         val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse(MASTER_HUB_DEEP_LINK)).apply {
             addCategory(Intent.CATEGORY_BROWSABLE)
@@ -291,31 +614,77 @@ object NexusHubBridgeService {
         return intent.resolveActivity(context.packageManager) != null
     }
 
+    private fun fetchFileBlobSha(
+        ownerRepo: String,
+        branch: String,
+        path: String,
+        pat: String
+    ): String? {
+        return runCatching {
+            val req = Request.Builder()
+                .url("https://api.github.com/repos/$ownerRepo/contents/$path?ref=$branch")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+                .header("Authorization", "Bearer $pat")
+                .header("User-Agent", "NexusTCG-Engine-Android/3.0")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    JSONObject(resp.body?.string().orEmpty()).optString("sha", "").ifBlank { null }
+                } else {
+                    null
+                }
+            }
+        }.getOrNull()
+    }
+
     private fun checkGitHubEndpointOk(url: String): Boolean {
         return runCatching {
             val req = Request.Builder()
                 .url(url)
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
-                .header("User-Agent", "NexusTCG-Engine-Android/1.0")
+                .header("User-Agent", "NexusTCG-Engine-Android/3.0")
                 .get()
                 .build()
             httpClient.newCall(req).execute().use { it.isSuccessful }
         }.getOrDefault(false)
     }
 
-    private fun fetchGitHubRawFile(ownerRepo: String, path: String): String? {
+    private fun fetchGitHubApiJson(url: String): String? {
         return runCatching {
             val req = Request.Builder()
-                .url("https://api.github.com/repos/$ownerRepo/contents/$path")
-                .header("Accept", "application/vnd.github.raw+json")
+                .url(url)
+                .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
-                .header("User-Agent", "NexusTCG-Engine-Android/1.0")
+                .header("User-Agent", "NexusTCG-Engine-Android/3.0")
                 .get()
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) resp.body?.string() else null
             }
         }.getOrNull()
+    }
+
+    private fun fetchGitHubRawFile(ownerRepo: String, path: String, branch: String = "main"): String? {
+        return runCatching {
+            val req = Request.Builder()
+                .url("https://api.github.com/repos/$ownerRepo/contents/$path?ref=$branch")
+                .header("Accept", "application/vnd.github.raw+json")
+                .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+                .header("User-Agent", "NexusTCG-Engine-Android/3.0")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) resp.body?.string() else null
+            }
+        }.getOrNull()
+    }
+
+    fun currentIsoUtc(): String {
+        val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        fmt.timeZone = TimeZone.getTimeZone("UTC")
+        return fmt.format(Date())
     }
 }

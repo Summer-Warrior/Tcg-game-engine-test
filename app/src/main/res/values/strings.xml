@@ -1,12 +1,16 @@
 <resources>
     <string name="app_name">NexusTCG</string>
-    <string name="hero_subtitle">Multi-TCG Engine &amp; Base-Variant Client Bridge</string>
+    <string name="hero_subtitle">Multi-TCG Engine &amp; MPV Card Maker Bridge</string>
     <string name="sign_in_google">Sign in with Google</string>
     <string name="sign_out">Sign out</string>
+    <string name="nav_hub">Hub</string>
+    <string name="nav_vault">Vault</string>
+    <string name="nav_tabletop">Tabletop</string>
+    <string name="nav_lore">Lore</string>
+    <string name="nav_discord_settings">Discord</string>
     <string name="nav_engines">Engines</string>
     <string name="nav_clients">Clients</string>
     <string name="nav_decks">Deck Forge</string>
-    <string name="nav_tabletop">Arena</string>
     <string name="nav_discord_rp">Discord RP</string>
     <string name="nav_settings">Settings</string>
     <string name="connect_base_variant">Sync Base Variant &amp; Connect</string>

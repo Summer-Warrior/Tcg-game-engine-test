@@ -1,0 +1,48 @@
+{
+  "contractVersion": "1.1.0",
+  "cardMakerRepo": "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
+  "gameEngineRepo": "Summer-Warrior/Tcg-game-engine-test",
+  "masterHubRepo": "Summer-Warrior/Project-MPV-RP-Master-Hub",
+  "dualConsentRule": "NO_SCHEMA_SYNC_OR_EXPORT_MIGRATION_WITHOUT_BOTH_CONSENTED",
+  "firestoreAlignedBounds": {
+    "customCardNameMaxLength": 120,
+    "customCardAbilityMaxLength": 2000,
+    "deckCardIdsMaxCount": 100,
+    "hostBoardCardsMaxCount": 30,
+    "opponentBoardCardsMaxCount": 30,
+    "maxDigitPrecision": 21
+  },
+  "boardDescriptorFormats": [
+    "name|cost|atk|def|type|ability",
+    "@V2|baseVariantId|code|name|type|pips|atk/def|effectType|ability"
+  ],
+  "timeTravelSafetyRule": {
+    "allowTimeTravelFlagsOnMatchCards": false,
+    "allowedInMatchTemporalEffects": [
+      "End Turn",
+      "Extra Turn"
+    ],
+    "dossierOnlyFilters": [
+      19,
+      20,
+      21
+    ]
+  },
+  "lockedClientFirewallRule": "STRICT_EXCLUDE_UPSTREAM_SOURCE_LOCK_TRUE_FROM_WRITABLE_EXPORTS",
+  "cardMakerConsent": {
+    "repo": "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
+    "packageName": "com.aistudio.tcgstudio.kqrmvx",
+    "consentedSchemaVersion": "1.1.0",
+    "consented": false,
+    "recordedBy": "",
+    "recordedAtUtc": ""
+  },
+  "gameEngineConsent": {
+    "repo": "Summer-Warrior/Tcg-game-engine-test",
+    "packageName": "com.aistudio.nexustcg.vxqrmk",
+    "consentedSchemaVersion": "1.1.0",
+    "consented": true,
+    "recordedBy": "NexusTCG Engine v3.0",
+    "recordedAtUtc": "2026-11-23T00:00:00Z"
+  }
+}

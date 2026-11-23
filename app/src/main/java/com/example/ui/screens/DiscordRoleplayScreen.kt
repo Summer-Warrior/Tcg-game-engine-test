@@ -318,7 +318,7 @@ fun DiscordRoleplayScreen(
                     }
 
                     Text(
-                        text = "Connects your EDOPro Base Variant (MR5) and 21-Digit EDOPro Custom Clone directly to Discord Roleplay servers. Toggle Discord bot integration or configure DISCORD_BOT_TOKEN and DISCORD_WEBHOOK_URL in Settings or via the .env file.",
+                        text = "Connects your TCG tabletop and roleplay personas directly to Discord channels via Webhook URL & OAuth2 server invites (zero client-side Bot Tokens).",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -350,20 +350,7 @@ fun DiscordRoleplayScreen(
                             onClick = onOpenSettings,
                             modifier = Modifier.testTag("open_discord_env_settings_button")
                         ) {
-                            Text("Discord .env Settings")
-                        }
-
-                        OutlinedButton(
-                            onClick = onDiscoverBotGuilds,
-                            modifier = Modifier.testTag("sync_discord_guilds_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Sync Bot Guilds",
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Sync Bot Guilds")
+                            Text("Webhook & Hub Settings")
                         }
 
                         OutlinedButton(

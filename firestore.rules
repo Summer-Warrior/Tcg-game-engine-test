@@ -161,6 +161,7 @@ service cloud.firestore {
                        request.auth.uid == userId &&
                        isValidId(userId) &&
                        isValidId(clientId) &&
+                       existing().requiresStrictBase == false &&
                        isValidClientNode(incoming()) &&
                        incoming().userId == existing().userId &&
                        incoming().createdAt == existing().createdAt &&
@@ -173,7 +174,11 @@ service cloud.firestore {
                          'customCodeString21', 'customCodeVarExpr21', 'updatedAt'
                        ]);
 
-      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(clientId);
+      allow delete: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(clientId) &&
+                       existing().requiresStrictBase == false;
     }
 
     // 3. CustomDeck Validation Blueprint (Supports 21-digit custom ATK/DEF, variable & code-string seeds)
@@ -182,8 +187,8 @@ service cloud.firestore {
              data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
              data.baseVariantId is string && data.baseVariantId.size() >= 1 && data.baseVariantId.size() <= 40 &&
              data.strategyTag is string && data.strategyTag.size() >= 1 && data.strategyTag.size() <= 40 &&
-             isValidStringList(data.cardIds, 40) &&
-             data.customCardName is string && data.customCardName.size() >= 1 && data.customCardName.size() <= 60 &&
+             isValidStringList(data.cardIds, 100) &&
+             data.customCardName is string && data.customCardName.size() >= 1 && data.customCardName.size() <= 120 &&
              data.customCardCost is int && data.customCardCost >= 0 && data.customCardCost <= 20 &&
              data.customCardAttack is int && data.customCardAttack >= 0 && data.customCardAttack <= 999999999999999999 &&
              data.customCardDefense is int && data.customCardDefense >= 0 && data.customCardDefense <= 999999999999999999 &&
@@ -192,7 +197,7 @@ service cloud.firestore {
              (!('customVarInput21' in data) || isValid21DigitNumber(data.customVarInput21)) &&
              (!('customCodeString21' in data) || isValid21DigitNumber(data.customCodeString21)) &&
              (!('customCodeVarExpr21' in data) || isValidCodeVarString21(data.customCodeVarExpr21)) &&
-             data.customCardAbility is string && data.customCardAbility.size() >= 1 && data.customCardAbility.size() <= 300 &&
+             data.customCardAbility is string && data.customCardAbility.size() >= 1 && data.customCardAbility.size() <= 2000 &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
@@ -254,9 +259,9 @@ service cloud.firestore {
              data.hostResources is int && data.hostResources >= 0 && data.hostResources <= 30 &&
              data.hostMaxResources is int && data.hostMaxResources >= 1 && data.hostMaxResources <= 30 &&
              data.opponentResources is int && data.opponentResources >= 0 && data.opponentResources <= 30 &&
-             isValidStringList(data.hostBoardCards, 12) &&
-             isValidStringList(data.opponentBoardCards, 12) &&
-             isValidStringList(data.actionLog, 20) &&
+             isValidStringList(data.hostBoardCards, 30) &&
+             isValidStringList(data.opponentBoardCards, 30) &&
+             isValidStringList(data.actionLog, 30) &&
              data.status is string &&
              (data.status == 'OPEN_LOBBY' || data.status == 'ACTIVE' || data.status == 'FINISHED') &&
              data.winnerName is string && data.winnerName.size() <= 60 &&

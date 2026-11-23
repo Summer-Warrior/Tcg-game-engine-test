@@ -441,9 +441,28 @@ data class CardTemplate(
     val abilityText: String,
     val artResId: Int
 ) {
-    fun toBoardDescriptor(): String = "$name|$cost|$attack|$defense|$cardType|$abilityText"
+    fun toBoardDescriptor(): String =
+        "${sanitizeField(name)}|$cost|$attack|$defense|${sanitizeField(cardType)}|${sanitizeField(abilityText)}"
+
+    fun toV2BoardDescriptor(
+        pips: String = TwentyColorPieCatalog.COLORLESS_PIP,
+        effectType: String = "RESOURCE_BOOST"
+    ): String {
+        val safeBase = sanitizeField(baseVariantId)
+        val safeCode = sanitizeField(passcode)
+        val safeName = sanitizeField(name)
+        val safeType = sanitizeField(cardType)
+        val safePips = sanitizeField(pips)
+        val safeStats = "${sanitizeField(attack21)}/${sanitizeField(defense21)}"
+        val safeEffect = sanitizeField(effectType)
+        val safeAbility = sanitizeField(abilityText)
+        return "@V2|$safeBase|$safeCode|$safeName|$safeType|$safePips|$safeStats|$safeEffect|$safeAbility"
+    }
 
     companion object {
+        fun sanitizeField(raw: String): String =
+            raw.replace("|", "/").replace("\n", " ").replace("\r", " ").trim()
+
         fun fromBoardDescriptor(descriptor: String, baseVariantId: String): CardTemplate {
             val cleanDescriptor = if (descriptor.startsWith("@Z:")) {
                 val pipeIdx = descriptor.indexOf('|')
@@ -455,6 +474,49 @@ data class CardTemplate(
             } else {
                 descriptor
             }
+
+            // Unified @V2 format: @V2|baseVariantId|code|name|type|pips|atk/def|effectType|ability
+            if (cleanDescriptor.startsWith("@V2|")) {
+                val v2Parts = cleanDescriptor.split("|")
+                val v2Base = v2Parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: baseVariantId
+                val v2Code = v2Parts.getOrNull(2)?.takeIf { it.isNotBlank() } ?: BigInt21Engine.DEFAULT_CODE_STRING_21
+                val v2Name = v2Parts.getOrNull(3)?.takeIf { it.isNotBlank() } ?: "Nexus Sovereign Card"
+                val v2Type = v2Parts.getOrNull(4)?.takeIf { it.isNotBlank() } ?: "Custom Unit"
+                val v2Pips = v2Parts.getOrNull(5)?.takeIf { it.isNotBlank() } ?: TwentyColorPieCatalog.COLORLESS_PIP
+                val statsToken = v2Parts.getOrNull(6).orEmpty()
+                val atk21 = statsToken.substringBefore("/", "2500").filter { it.isDigit() }.take(21).ifEmpty { "2500" }
+                val def21 = statsToken.substringAfter("/", "2000").filter { it.isDigit() }.take(21).ifEmpty { "2000" }
+                val atkInt = atk21.toLongOrNull()?.coerceIn(0L, Int.MAX_VALUE.toLong())?.toInt() ?: 2500
+                val defInt = def21.toLongOrNull()?.coerceIn(0L, Int.MAX_VALUE.toLong())?.toInt() ?: 2000
+                val v2Effect = v2Parts.getOrNull(7)?.takeIf { it.isNotBlank() } ?: ""
+                val v2AbilityRaw = v2Parts.drop(8).joinToString(" / ").trim()
+                val v2Ability = buildString {
+                    if (v2Pips != TwentyColorPieCatalog.COLORLESS_PIP) append("[$v2Pips] ")
+                    if (v2Effect.isNotEmpty()) append("($v2Effect) ")
+                    append(v2AbilityRaw.ifEmpty { "Synced @V2 Card Descriptor" })
+                }.trim()
+                val art = when {
+                    v2Name.contains("Dragon", ignoreCase = true) || v2Base == "EDOPRO_BASE_MR5" || v2Base == "FORGE_MTG_BASE" -> R.drawable.img_card_arcane
+                    v2Base == "ULTIMATE_TCG_WIP" || v2Base == "EDOPRO_CUSTOM_FORK" || v2Base == "HYBRID_FORGE_EDOPRO_MIX" -> R.drawable.img_card_void
+                    else -> R.drawable.img_card_mecha
+                }
+                return CardTemplate(
+                    id = v2Name.lowercase().replace(" ", "_"),
+                    passcode = v2Code,
+                    name = v2Name,
+                    baseVariantId = v2Base,
+                    cardType = v2Type,
+                    cost = v2Pips.count { it == '{' }.coerceIn(0, 12),
+                    attack = atkInt,
+                    defense = defInt,
+                    attack21 = atk21,
+                    defense21 = def21,
+                    abilityText = v2Ability,
+                    artResId = art
+                )
+            }
+
+            // Legacy format: name|cost|atk|def|type|ability[|atk21|def21|passcode]
             val parts = cleanDescriptor.split("|")
             val name = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: "Ignis Sovereign Dragon"
             val cost = parts.getOrNull(1)?.toIntOrNull() ?: 4

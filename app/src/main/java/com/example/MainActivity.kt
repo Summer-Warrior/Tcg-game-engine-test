@@ -10,12 +10,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -26,30 +24,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Style
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.DashboardCustomize
 import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Hub
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,14 +49,16 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,7 +66,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -89,20 +82,27 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.auth.AuthScreen
 import com.example.auth.authStateFlow
 import com.example.auth.signOut
+import com.example.data.AlignmentCheckReport
 import com.example.data.BuiltInTcgCatalog
+import com.example.data.CardTemplate
 import com.example.data.DiscordApiService
+import com.example.data.FederatedCardPack
 import com.example.data.FirestoreGameEventLogService
 import com.example.data.FirestoreGameStateManager
 import com.example.data.GameBoardSyncService
+import com.example.data.NexusHubBridgeService
 import com.example.data.NexusTcgRepository
+import com.example.data.RegistryAssetLoader
+import com.example.data.StartupAlignmentChecker
+import com.example.engine.CatalogBlueprint
 import com.example.ui.components.ConfirmOpenClientWindowDialog
 import com.example.ui.components.FloatingRulesetProtocolInspectorHost
 import com.example.ui.components.PendingClientLaunchSelection
-import com.example.ui.screens.ClientBridgeScreen
-import com.example.ui.screens.DeckForgeScreen
-import com.example.ui.screens.DiscordRoleplayScreen
-import com.example.ui.screens.EnginesScreen
-import com.example.ui.screens.SettingsScreen
+import com.example.ui.components.StartupAlignmentDialog
+import com.example.ui.screens.CardVaultAtlasScreen
+import com.example.ui.screens.DiscordSettingsHubScreen
+import com.example.ui.screens.LoreAvatarsMemorialScreen
+import com.example.ui.screens.MasterHubScreen
 import com.example.ui.screens.TabletopArenaScreen
 import com.example.ui.theme.EmeraldReady
 import com.example.ui.theme.MyApplicationTheme
@@ -113,84 +113,98 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
+
+data class DeepLinkNavigationTarget(
+    val section: NexusSection = NexusSection.HUB,
+    val vaultSubTab: Int = 0,
+    val discordSubTab: Int = 0
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DiscordApiService.init(this)
-        val initialSection = parseDeepLinkSection(intent?.data)
+        val initialTarget = parseDeepLinkTarget(intent?.data)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                AppNavigation(initialSection = initialSection)
+                AppNavigation(initialTarget = initialTarget)
             }
         }
     }
 
-    private fun parseDeepLinkSection(uri: android.net.Uri?): NexusSection {
+    private fun parseDeepLinkTarget(uri: android.net.Uri?): DeepLinkNavigationTarget {
         if (uri == null || uri.scheme != "nexus-tcg-engine" || uri.host != "open") {
-            return NexusSection.ENGINES
+            return DeepLinkNavigationTarget()
         }
-        val requested = uri.getQueryParameter("section")?.trim()?.lowercase().orEmpty()
-        return when (requested) {
-            "settings", "hub" -> NexusSection.SETTINGS
-            "clients" -> NexusSection.CLIENTS
-            "decks" -> NexusSection.DECKS
-            "arena", "tabletop" -> NexusSection.ARENA
-            "discord", "discord_rp" -> NexusSection.DISCORD_RP
-            else -> if (uri.getQueryParameter("hubSync") == "1") NexusSection.SETTINGS else NexusSection.ENGINES
+        val hubSync = uri.getQueryParameter("hubSync") == "1"
+        val exportClient = uri.getQueryParameter("exportClientInfo") == "1"
+        val fromCardMaker = uri.getQueryParameter("from").equals("tcgstudio", ignoreCase = true)
+        if (hubSync || exportClient || fromCardMaker) {
+            return DeepLinkNavigationTarget(section = NexusSection.VAULT, vaultSubTab = 4)
+        }
+        return when (uri.getQueryParameter("section")?.trim()?.lowercase().orEmpty()) {
+            "vault", "decks", "atlas", "bridge", "handshake" -> DeepLinkNavigationTarget(NexusSection.VAULT, vaultSubTab = if (uri.getQueryParameter("section") == "handshake") 4 else 0)
+            "tabletop", "arena" -> DeepLinkNavigationTarget(NexusSection.TABLETOP)
+            "lore", "avatars", "memorial" -> DeepLinkNavigationTarget(NexusSection.LORE)
+            "discord", "discord_rp" -> DeepLinkNavigationTarget(NexusSection.DISCORD_SETTINGS, discordSubTab = 0)
+            "settings" -> DeepLinkNavigationTarget(NexusSection.DISCORD_SETTINGS, discordSubTab = 1)
+            else -> DeepLinkNavigationTarget(NexusSection.HUB)
         }
     }
 }
 
+/**
+ * Exact 5 Clean Navigation Sections:
+ * 1. Master Hub
+ * 2. Card Vault & 20-Color Atlas (includes MPV Bridge / Handshake Area)
+ * 3. Tabletop (ONE consolidated playmat-first tabletop)
+ * 4. Lore, Avatars & Memorial Forge
+ * 5. Discord RP & Settings
+ */
 enum class NexusSection(
     val routeId: String,
     val labelResId: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
-    ENGINES(
-        routeId = "engines",
-        labelResId = R.string.nav_engines,
+    HUB(
+        routeId = "hub",
+        labelResId = R.string.nav_hub,
         selectedIcon = Icons.Filled.DashboardCustomize,
         unselectedIcon = Icons.Outlined.DashboardCustomize
     ),
-    CLIENTS(
-        routeId = "clients",
-        labelResId = R.string.nav_clients,
-        selectedIcon = Icons.Filled.Hub,
-        unselectedIcon = Icons.Outlined.Hub
-    ),
-    DECKS(
-        routeId = "decks",
-        labelResId = R.string.nav_decks,
+    VAULT(
+        routeId = "vault",
+        labelResId = R.string.nav_vault,
         selectedIcon = Icons.Filled.Style,
         unselectedIcon = Icons.Outlined.Style
     ),
-    ARENA(
-        routeId = "arena",
+    TABLETOP(
+        routeId = "tabletop",
         labelResId = R.string.nav_tabletop,
         selectedIcon = Icons.Filled.SportsEsports,
         unselectedIcon = Icons.Outlined.SportsEsports
     ),
-    DISCORD_RP(
-        routeId = "discord_rp",
-        labelResId = R.string.nav_discord_rp,
+    LORE(
+        routeId = "lore",
+        labelResId = R.string.nav_lore,
+        selectedIcon = Icons.Filled.AutoStories,
+        unselectedIcon = Icons.Outlined.AutoStories
+    ),
+    DISCORD_SETTINGS(
+        routeId = "discord_settings",
+        labelResId = R.string.nav_discord_settings,
         selectedIcon = Icons.Filled.Forum,
         unselectedIcon = Icons.Outlined.Forum
-    ),
-    SETTINGS(
-        routeId = "settings",
-        labelResId = R.string.nav_settings,
-        selectedIcon = Icons.Filled.Settings,
-        unselectedIcon = Icons.Outlined.Settings
     )
 }
 
 @Composable
 fun AppNavigation(
     auth: FirebaseAuth = Firebase.auth,
-    initialSection: NexusSection = NexusSection.ENGINES
+    initialTarget: DeepLinkNavigationTarget = DeepLinkNavigationTarget()
 ) {
     val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
     val user = currentUser
@@ -205,7 +219,7 @@ fun AppNavigation(
             NexusTcgMainScreen(
                 currentUserId = uid,
                 currentUserName = displayName,
-                initialSection = initialSection
+                initialTarget = initialTarget
             )
         }
     }
@@ -216,13 +230,15 @@ fun AppNavigation(
 fun NexusTcgMainScreen(
     currentUserId: String,
     currentUserName: String,
-    initialSection: NexusSection = NexusSection.ENGINES
+    initialTarget: DeepLinkNavigationTarget = DeepLinkNavigationTarget()
 ) {
     val context = LocalContext.current
     remember(context) {
         DiscordApiService.init(context)
         true
     }
+
+    val registryBundle = remember(context) { RegistryAssetLoader.loadAll(context) }
 
     val viewModel: NexusTcgViewModel = viewModel(
         key = currentUserId,
@@ -246,18 +262,50 @@ fun NexusTcgMainScreen(
     val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
 
-    var currentSection by rememberSaveable { mutableStateOf(initialSection) }
+    var currentSection by rememberSaveable { mutableStateOf(initialTarget.section) }
+    var vaultSubTab by rememberSaveable { mutableIntStateOf(initialTarget.vaultSubTab) }
+    var discordSubTab by rememberSaveable { mutableIntStateOf(initialTarget.discordSubTab) }
+    var localBannerMessage by remember { mutableStateOf<String?>(null) }
 
-    if (currentSection != NexusSection.ENGINES) {
+    // Dynamic catalog state (bundled 160+ blueprints + user/AI synthesized combos)
+    val synthesizedCombos = remember { mutableStateListOf<CatalogBlueprint>() }
+    val allBlueprints = remember(registryBundle.tcgCatalog, synthesizedCombos.size) {
+        synthesizedCombos + registryBundle.tcgCatalog
+    }
+    var activeFormatBlueprint by remember {
+        mutableStateOf(registryBundle.tcgCatalog.firstOrNull())
+    }
+
+    // Dynamic federated card packs (bundled + pulled from MPV Card Maker)
+    val pulledPacks = remember { mutableStateListOf<FederatedCardPack>() }
+    val allCardPacks = remember(registryBundle.federatedCardPacks, pulledPacks.size) {
+        pulledPacks + registryBundle.federatedCardPacks
+    }
+
+    // Live IC Memorial feed entries bridged from Tabletop IC Chat -> Section 4 Memorial Forge
+    val icMemorialFeed = remember { mutableStateListOf<String>() }
+
+    // Automatic On-Open Alignment & Update Check + Pop-Up State
+    var alignmentReport by remember { mutableStateOf<AlignmentCheckReport?>(null) }
+    var showAlignmentPopup by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val report = StartupAlignmentChecker.runStartupCheck(context)
+        alignmentReport = report
+        if (report.shouldShowPopup) {
+            showAlignmentPopup = true
+        }
+    }
+
+    if (currentSection != NexusSection.HUB) {
         BackHandler {
-            currentSection = NexusSection.ENGINES
+            currentSection = NexusSection.HUB
         }
     }
 
     val selectedBaseVariantId by viewModel.selectedBaseVariantId.collectAsStateWithLifecycle()
     val activeCustomVariant by viewModel.activeCustomVariant.collectAsStateWithLifecycle()
     val activeClientNode by viewModel.activeClientNode.collectAsStateWithLifecycle()
-    val variantsState by viewModel.variantsState.collectAsStateWithLifecycle()
     val clientsState by viewModel.clientsState.collectAsStateWithLifecycle()
     val decksState by viewModel.decksState.collectAsStateWithLifecycle()
     val matchesState by viewModel.matchesState.collectAsStateWithLifecycle()
@@ -275,8 +323,9 @@ fun NexusTcgMainScreen(
     val gameEngineState by viewModel.gameEngineState.collectAsStateWithLifecycle()
     val playerHand by viewModel.playerHand.collectAsStateWithLifecycle()
     val lastHandshakeDiagnostic by viewModel.lastHandshakeDiagnostic.collectAsStateWithLifecycle()
-    val statusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
+    val vmStatusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
 
+    val activeBanner = localBannerMessage ?: vmStatusBanner
     val activeBaseSpec = BuiltInTcgCatalog.findBaseSpec(selectedBaseVariantId)
     val activeUiProfile = BuiltInTcgCatalog.systemUiProfileFor(selectedBaseVariantId, activeClientNode)
     val registeredClients = (clientsState as? UiState.Success)?.data.orEmpty()
@@ -285,12 +334,10 @@ fun NexusTcgMainScreen(
     val currentActiveMatch = availableMatchesList.firstOrNull { it.id == activeMatchId }
         ?: availableMatchesList.firstOrNull()
     val connectedClientsList = registeredClients.filter { it.connectionStatus == "CONNECTED" }
-    val connectedClientCount = connectedClientsList.size
-    val isUnmodifiedBase = activeCustomVariant == null || activeCustomVariant?.isBaseStandard == true
+
     var isRulesetInspectorOpen by rememberSaveable { mutableStateOf(false) }
     var pendingClientLaunch by remember { mutableStateOf<PendingClientLaunchSelection?>(null) }
 
-    // Dynamically switch the entire app's MaterialTheme ColorScheme to the active TCG Client's System
     MyApplicationTheme(baseVariantId = selectedBaseVariantId) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val isExpanded = maxWidth >= 600.dp
@@ -300,71 +347,33 @@ fun NexusTcgMainScreen(
                 topBar = {
                     TopAppBar(
                         title = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column {
-                                    Text(
-                                        text = stringResource(id = R.string.app_name),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = MaterialTheme.colorScheme.onSurface
+                            Column {
+                                Text(
+                                    text = stringResource(id = R.string.app_name),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(
+                                                color = if (activeFormatBlueprint?.upstreamSourceLock == true) EmeraldReady else RadiantGold,
+                                                shape = CircleShape
+                                            )
                                     )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .background(
-                                                    color = if (activeBaseSpec.isCustomProjectClone) {
-                                                        RadiantGold
-                                                    } else if (isUnmodifiedBase) {
-                                                        EmeraldReady
-                                                    } else {
-                                                        RadiantGold
-                                                    },
-                                                    shape = CircleShape
-                                                )
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "System UI: ${activeUiProfile.hudBadgeLabel} • ${activeUiProfile.lifeLabel} • $connectedClientCount Clients",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = activeFormatBlueprint?.name ?: activeUiProfile.systemTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         },
                         actions = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .background(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = RoundedCornerShape(50)
-                                    )
-                                    .clickable { isRulesetInspectorOpen = !isRulesetInspectorOpen }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                                    .testTag("header_protocol_chip")
-                            ) {
-                                Text(
-                                    text = when (activeBaseSpec.baseVariantId) {
-                                        "EDOPRO_BASE_MR5" -> "EDOPro Base"
-                                        "EDOPRO_CUSTOM_FORK" -> "EDOPro 21d Clone"
-                                        "FORGE_MTG_BASE" -> "Card-Forge MTG"
-                                        "FORGE_CUSTOM_CLONE" -> "Forge 21d Clone"
-                                        "HYBRID_FORGE_EDOPRO_MIX" -> "Mixed Forge+EDO"
-                                        else -> activeBaseSpec.name.substringBefore(" ")
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (activeBaseSpec.isCustomProjectClone) {
-                                        RadiantGold
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    },
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(2.dp))
                             IconButton(
                                 onClick = { isRulesetInspectorOpen = !isRulesetInspectorOpen },
                                 modifier = Modifier.testTag("top_inspector_debug_button")
@@ -372,11 +381,7 @@ fun NexusTcgMainScreen(
                                 Icon(
                                     imageVector = Icons.Default.BugReport,
                                     contentDescription = "Toggle Floating Ruleset & Protocol Inspector",
-                                    tint = if (isRulesetInspectorOpen) {
-                                        RadiantGold
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    }
+                                    tint = if (isRulesetInspectorOpen) RadiantGold else MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(
@@ -392,30 +397,13 @@ fun NexusTcgMainScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.DesktopWindows,
-                                    contentDescription = "Open Active Client System in Separate Window",
+                                    contentDescription = "Open Active Client Window",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(
-                                onClick = { currentSection = NexusSection.SETTINGS },
-                                modifier = Modifier.testTag("settings_top_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = stringResource(id = R.string.nav_settings),
-                                    tint = if (currentSection == NexusSection.SETTINGS) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
-                            IconButton(
                                 onClick = {
-                                    signOut(
-                                        credentialManager = credentialManager,
-                                        scope = scope
-                                    )
+                                    signOut(credentialManager = credentialManager, scope = scope)
                                 },
                                 modifier = Modifier.testTag("sign_out_button")
                             ) {
@@ -433,9 +421,7 @@ fun NexusTcgMainScreen(
                 },
                 bottomBar = {
                     if (!isExpanded) {
-                        NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ) {
+                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                             NexusSection.entries.forEach { section ->
                                 val selected = currentSection == section
                                 NavigationBarItem(
@@ -496,134 +482,12 @@ fun NexusTcgMainScreen(
                     }
 
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Active TCG Client System Bar (Quick UI Switcher + Separate Window Launcher)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f))
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                                .testTag("active_client_system_bar"),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "ACTIVE CLIENT SYSTEM: ${activeUiProfile.systemTitle}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(activeUiProfile.accentHex),
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Layout: ${activeUiProfile.boardLayoutType} • ${activeUiProfile.lifeLabel} • ${activeUiProfile.deployVerb}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        pendingClientLaunch = PendingClientLaunchSelection(
-                                            client = activeClientNode,
-                                            baseVariantId = selectedBaseVariantId,
-                                            activeMatchId = activeMatchId,
-                                            sourceLabel = "Active Client System Bar"
-                                        )
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.testTag("open_active_client_window_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                        contentDescription = "Open Client in Separate Window",
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Open Window",
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                if (registeredClients.isNotEmpty()) {
-                                    registeredClients.forEach { client ->
-                                        val isCurrentClient = selectedBaseVariantId == client.baseVariantId &&
-                                            (activeClientNode?.id == client.id || activeClientNode == null)
-                                        FilterChip(
-                                            selected = isCurrentClient,
-                                            onClick = {
-                                                viewModel.selectClientAndSwitchSystem(client)
-                                                pendingClientLaunch = PendingClientLaunchSelection(
-                                                    client = client,
-                                                    baseVariantId = client.baseVariantId,
-                                                    activeMatchId = activeMatchId,
-                                                    sourceLabel = "Client Quick-Switch Bar"
-                                                )
-                                            },
-                                            label = {
-                                                Text(
-                                                    text = client.clientName,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    maxLines = 1
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.SwapHoriz,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            },
-                                            modifier = Modifier.testTag("quick_switch_client_${client.id}")
-                                        )
-                                    }
-                                } else {
-                                    BuiltInTcgCatalog.baseVariants.forEach { spec ->
-                                        val isCurrent = selectedBaseVariantId == spec.baseVariantId
-                                        FilterChip(
-                                            selected = isCurrent,
-                                            onClick = {
-                                                viewModel.selectBaseVariant(spec.baseVariantId)
-                                                pendingClientLaunch = PendingClientLaunchSelection(
-                                                    client = null,
-                                                    baseVariantId = spec.baseVariantId,
-                                                    activeMatchId = activeMatchId,
-                                                    sourceLabel = "Base System Quick-Switch"
-                                                )
-                                            },
-                                            label = {
-                                                Text(
-                                                    text = spec.name,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    maxLines = 1
-                                                )
-                                            },
-                                            modifier = Modifier.testTag("quick_switch_base_${spec.baseVariantId}")
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        AnimatedVisibility(visible = statusBanner != null) {
-                            statusBanner?.let { bannerText ->
+                        AnimatedVisibility(visible = activeBanner != null) {
+                            activeBanner?.let { bannerText ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
                                         .background(
                                             color = MaterialTheme.colorScheme.primaryContainer,
                                             shape = RoundedCornerShape(12.dp)
@@ -640,12 +504,15 @@ fun NexusTcgMainScreen(
                                 ) {
                                     Text(
                                         text = bannerText,
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.weight(1f)
                                     )
                                     IconButton(
-                                        onClick = { viewModel.dismissBanner() },
+                                        onClick = {
+                                            localBannerMessage = null
+                                            viewModel.dismissBanner()
+                                        },
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
@@ -661,115 +528,50 @@ fun NexusTcgMainScreen(
 
                         Box(modifier = Modifier.fillMaxSize()) {
                             when (currentSection) {
-                                NexusSection.ENGINES -> {
-                                    EnginesScreen(
-                                        selectedBaseVariantId = selectedBaseVariantId,
-                                        activeCustomVariant = activeCustomVariant,
-                                        variantsState = variantsState,
-                                        connectedClientCount = connectedClientCount,
-                                        onSelectBaseVariant = { viewModel.selectBaseVariant(it) },
-                                        onActivateCustomVariant = { viewModel.activateCustomVariant(it) },
-                                        onResetToBaseStandard = { viewModel.resetToActiveBaseStandard() },
-                                        onCreateVariant = { name, baseId, resName, life, hand, maxRes, combat ->
-                                            viewModel.createNewEngineVariant(name, baseId, resName, life, hand, maxRes, combat)
+                                NexusSection.HUB -> {
+                                    MasterHubScreen(
+                                        catalogBlueprints = allBlueprints,
+                                        companionApps = registryBundle.companionApps,
+                                        alignmentReport = alignmentReport,
+                                        activeFormatBlueprintId = activeFormatBlueprint?.id ?: "",
+                                        onSelectBlueprintForTabletop = { bp ->
+                                            activeFormatBlueprint = bp
+                                            if (bp.id in setOf("EDOPRO_BASE_MR5", "FORGE_MTG_BASE", "EDOPRO_CUSTOM_FORK", "FORGE_CUSTOM_CLONE", "HYBRID_FORGE_EDOPRO_MIX")) {
+                                                viewModel.selectBaseVariant(bp.id)
+                                            }
+                                            localBannerMessage = "Loaded '${bp.name}' (${bp.boardArchetype}) on Tabletop."
+                                            currentSection = NexusSection.TABLETOP
                                         },
-                                        onCloneEdoProProject = { projName, cdbFile, lp21, zones, var21, arg21, fn, codeStr21, codeVarExpr21 ->
-                                            viewModel.cloneEdoProForCustomProject(
-                                                projName, cdbFile, lp21, zones, var21, arg21, fn, codeStr21, codeVarExpr21
-                                            )
+                                        onAddSynthesizedCombo = { combo ->
+                                            if (synthesizedCombos.none { it.id == combo.id }) {
+                                                synthesizedCombos.add(0, combo)
+                                            }
                                         },
-                                        onCloneForgeProject = { projName, cardsFolder, life21, manaPool, svar21, arg21, fn ->
-                                            viewModel.cloneForgeForCustomProject(
-                                                projName, cardsFolder, life21, manaPool, svar21, arg21, fn
-                                            )
-                                        },
-                                        onSpawnMixedForgeEdoProClient = { mixName, life21, extraMod, var21, arg21 ->
-                                            viewModel.spawnMixedForgeEdoProClient(
-                                                mixName, life21, extraMod, var21, arg21
-                                            )
-                                        },
-                                        onAddExtensionToMixedClient = { modName, modCat, var21 ->
-                                            viewModel.addExtensionToMixedClient(
-                                                targetClient = null,
-                                                newModuleName = modName,
-                                                newModuleCategory = modCat,
-                                                newVarInput21 = var21
-                                            )
-                                        },
-                                        onDeleteVariant = { viewModel.deleteVariant(it) },
-                                        onNavigateToClients = { currentSection = NexusSection.CLIENTS },
-                                        onRequestConfirmOpenClientWindow = { baseId ->
+                                        onOpenSeparateClientWindow = { baseId ->
                                             val matchingClient = registeredClients.firstOrNull { it.baseVariantId == baseId }
                                             pendingClientLaunch = PendingClientLaunchSelection(
                                                 client = matchingClient,
                                                 baseVariantId = baseId,
                                                 activeMatchId = activeMatchId,
-                                                sourceLabel = "Engines Hub"
+                                                sourceLabel = "Master Hub"
                                             )
-                                        }
+                                        },
+                                        onOpenHandshakeArea = {
+                                            vaultSubTab = 4
+                                            currentSection = NexusSection.VAULT
+                                        },
+                                        onStatusMessage = { localBannerMessage = it }
                                     )
                                 }
-                                NexusSection.CLIENTS -> {
-                                    ClientBridgeScreen(
-                                        selectedBaseVariantId = selectedBaseVariantId,
-                                        activeCustomVariant = activeCustomVariant,
-                                        clientsState = clientsState,
-                                        lastHandshakeDiagnostic = lastHandshakeDiagnostic,
-                                        onIncludeClient = { name, type, uri, baseId, strict ->
-                                            viewModel.includeExternalClient(name, type, uri, baseId, strict)
-                                        },
-                                        onConnectClient = { client, syncToBase ->
-                                            viewModel.connectClientNode(client, syncToBase)
-                                        },
-                                        onDisconnectClient = { viewModel.disconnectClientNode(it) },
-                                        onDeleteClient = { viewModel.deleteClientNode(it) },
-                                        onSelectBaseVariant = { viewModel.selectBaseVariant(it) },
-                                        onCloneEdoProProject = { projName, cdbFile, lp21, zones, var21, arg21, fn, codeStr21, codeVarExpr21 ->
-                                            viewModel.cloneEdoProForCustomProject(
-                                                projName, cdbFile, lp21, zones, var21, arg21, fn, codeStr21, codeVarExpr21
-                                            )
-                                        },
-                                        onCloneForgeProject = { projName, cardsFolder, life21, manaPool, svar21, arg21, fn ->
-                                            viewModel.cloneForgeForCustomProject(
-                                                projName, cardsFolder, life21, manaPool, svar21, arg21, fn
-                                            )
-                                        },
-                                        onSpawnMixedForgeEdoProClient = { mixName, life21, extraMod, var21, arg21 ->
-                                            viewModel.spawnMixedForgeEdoProClient(
-                                                mixName, life21, extraMod, var21, arg21
-                                            )
-                                        },
-                                        onAddExtensionToMixedClient = { targetClient, modName, modCat, var21 ->
-                                            viewModel.addExtensionToMixedClient(
-                                                targetClient = targetClient,
-                                                newModuleName = modName,
-                                                newModuleCategory = modCat,
-                                                newVarInput21 = var21
-                                            )
-                                        },
-                                        onExecuteClient21DigitFunction = { client, var21, arg21, fn, codeStr21, codeVarExpr21 ->
-                                            viewModel.executeClient21DigitFunction(
-                                                client, var21, arg21, fn, codeStr21, codeVarExpr21
-                                            )
-                                        },
-                                        onSyncBaseClientFromGitHubSource = { client ->
-                                            viewModel.syncBaseClientFromUpstreamGitHub(client)
-                                        },
-                                        onResetToBaseStandard = { viewModel.resetToActiveBaseStandard() },
-                                        onRequestConfirmOpenClientWindow = { client, baseId ->
-                                            pendingClientLaunch = PendingClientLaunchSelection(
-                                                client = client,
-                                                baseVariantId = baseId,
-                                                activeMatchId = activeMatchId,
-                                                sourceLabel = "Client Bridge"
-                                            )
-                                        }
-                                    )
-                                }
-                                NexusSection.DECKS -> {
-                                    DeckForgeScreen(
+
+                                NexusSection.VAULT -> {
+                                    CardVaultAtlasScreen(
+                                        initialSubTab = vaultSubTab,
                                         selectedBaseVariantId = selectedBaseVariantId,
                                         decksState = decksState,
+                                        federatedCardPacks = allCardPacks,
+                                        customSynthesizedCombos = synthesizedCombos.toList(),
+                                        alignmentReport = alignmentReport,
                                         onSelectBaseVariant = { viewModel.selectBaseVariant(it) },
                                         onCreateDeck = { deckName, baseId, tag, cardName, cost, atk, def, ability, atk21, def21, var21, codeStr21, codeVarExpr21 ->
                                             viewModel.createCustomDeckAndCard(
@@ -777,12 +579,50 @@ fun NexusTcgMainScreen(
                                             )
                                         },
                                         onDeleteDeck = { viewModel.deleteDeck(it) },
-                                        onBroadcastDeckToDiscord = { deck ->
-                                            viewModel.broadcastDeckSummaryToDiscord(deck)
-                                        }
+                                        onBroadcastDeckToDiscord = { viewModel.broadcastDeckSummaryToDiscord(it) },
+                                        onTestImportedCardOnTabletop = { card ->
+                                            val template = CardTemplate(
+                                                id = card.cardId,
+                                                passcode = card.cardId.filter { it.isDigit() }.ifBlank { "89631139" },
+                                                name = card.name,
+                                                baseVariantId = selectedBaseVariantId,
+                                                cardType = card.cardType,
+                                                cost = 1,
+                                                attack = card.atk21.toIntOrNull() ?: 3000,
+                                                defense = card.def21.toIntOrNull() ?: 2500,
+                                                attack21 = card.atk21,
+                                                defense21 = card.def21,
+                                                abilityText = "${card.pipCost} • ${card.ability}",
+                                                artResId = R.drawable.ic_launcher_foreground
+                                            )
+                                            if (currentActiveMatch != null) {
+                                                viewModel.deployCardToBattlefield(currentActiveMatch, template)
+                                            }
+                                            localBannerMessage = "Sent '${card.name}' (${card.pipCost}) to Tabletop!"
+                                            currentSection = NexusSection.TABLETOP
+                                        },
+                                        onAddPulledCardPacks = { packs ->
+                                            packs.forEach { pack ->
+                                                if (pulledPacks.none { it.packId == pack.packId }) {
+                                                    pulledPacks.add(0, pack)
+                                                }
+                                            }
+                                        },
+                                        onRerunStartupAlignment = {
+                                            scope.launch {
+                                                val fresh = StartupAlignmentChecker.runStartupCheck(
+                                                    context = context,
+                                                    forceShowEvenIfDismissed = true
+                                                )
+                                                alignmentReport = fresh
+                                                localBannerMessage = fresh.summaryMessage
+                                            }
+                                        },
+                                        onStatusMessage = { localBannerMessage = it }
                                     )
                                 }
-                                NexusSection.ARENA -> {
+
+                                NexusSection.TABLETOP -> {
                                     TabletopArenaScreen(
                                         selectedBaseVariantId = selectedBaseVariantId,
                                         activeCustomVariant = activeCustomVariant,
@@ -799,30 +639,18 @@ fun NexusTcgMainScreen(
                                         onDeployCard = { match, card -> viewModel.deployCardToBattlefield(match, card) },
                                         onExecuteCombatAndAdvanceTurn = { viewModel.executeCombatAndAdvanceTurn(it) },
                                         onChangePhase = { match, phase -> viewModel.changeMatchPhase(match, phase) },
-                                        onStepGameEnginePhase = { match -> viewModel.stepGameEnginePhase(match) },
-                                        onSelectGameEnginePhase = { phase, match ->
-                                            viewModel.setGameEnginePhase(phase, match)
-                                        },
-                                        onQueueCardEffect = { card, effectType, match ->
-                                            viewModel.queueCardEffectOnStack(card, effectType, match)
-                                        },
-                                        onResolveNextEffect = { match -> viewModel.resolveNextStackEffect(match) },
-                                        onResolveAllEffects = { match -> viewModel.resolveFullEffectStack(match) },
-                                        onAdjustResources = { delta, match ->
-                                            viewModel.adjustMatchOrEngineResources(delta, match)
-                                        },
-                                        onSetResourcesExact = { exact, match ->
-                                            viewModel.setMatchOrEngineResources(exact, match)
-                                        },
-                                        onRefillResources = { match ->
-                                            viewModel.refillMatchOrEngineResources(match)
-                                        },
-                                        onExpandMaxResources = { match ->
-                                            viewModel.expandMatchOrEngineMaxResources(match)
-                                        },
-                                        onRecordMatchActionLog = { match, logLine -> viewModel.recordMatchActionLog(match, logLine) },
-                                        onBroadcastBoardState = { match, placements, eventType, eventSummary ->
-                                            viewModel.broadcastCanvasBoardState(match, placements, eventType, eventSummary)
+                                        onStepGameEnginePhase = { viewModel.stepGameEnginePhase(it) },
+                                        onSelectGameEnginePhase = { phase, match -> viewModel.setGameEnginePhase(phase, match) },
+                                        onQueueCardEffect = { card, effectType, match -> viewModel.queueCardEffectOnStack(card, effectType, match) },
+                                        onResolveNextEffect = { viewModel.resolveNextStackEffect(it) },
+                                        onResolveAllEffects = { viewModel.resolveFullEffectStack(it) },
+                                        onAdjustResources = { delta, match -> viewModel.adjustMatchOrEngineResources(delta, match) },
+                                        onSetResourcesExact = { exact, match -> viewModel.setMatchOrEngineResources(exact, match) },
+                                        onRefillResources = { viewModel.refillMatchOrEngineResources(it) },
+                                        onExpandMaxResources = { viewModel.expandMatchOrEngineMaxResources(it) },
+                                        onRecordMatchActionLog = { match, logEntry -> viewModel.recordMatchActionLog(match, logEntry) },
+                                        onBroadcastBoardState = { match, placements, note, actor ->
+                                            viewModel.broadcastCanvasBoardState(match, placements, note, actor)
                                         },
                                         onTriggerPeerClientSyncMove = { match, placements ->
                                             viewModel.triggerPeerClientBoardSyncMove(match, placements)
@@ -837,52 +665,51 @@ fun NexusTcgMainScreen(
                                             )
                                         },
                                         discordDesignatedChannel = discordBridgeConfig.designatedChannelName,
-                                        onBroadcastGameStartToDiscord = { match ->
-                                            viewModel.broadcastGameStartToDiscord(match = match)
-                                        },
-                                        onBroadcastMatchWinnerToDiscord = { match ->
-                                            viewModel.broadcastMatchWinnerToDiscord(match = match)
-                                        },
+                                        onBroadcastGameStartToDiscord = { viewModel.broadcastGameStartToDiscord(match = it) },
+                                        onBroadcastMatchWinnerToDiscord = { viewModel.broadcastMatchWinnerToDiscord(match = it) },
                                         realtimeGameSyncState = realtimeGameSyncState,
-                                        onSelectSyncSeat = { seat -> viewModel.setLocalSyncSeat(seat) },
-                                        onJoinSyncMatchById = { roomId -> viewModel.joinSyncedMatchById(roomId) },
-                                        onAdjustSyncedLifePoints = { seat, delta ->
-                                            viewModel.adjustSyncedLifePoints(seat, delta)
-                                        },
-                                        onSetSyncedLifePointsExact = { seat, exact ->
-                                            viewModel.setSyncedLifePointsExact(seat, exact)
-                                        },
-                                        onDeploySyncedCardForActiveSeat = {
-                                            viewModel.deploySyncedCardForActiveSeat()
-                                        },
-                                        onToggleSyncedZoneOrientation = { zoneId ->
-                                            viewModel.toggleSyncedZoneOrientation(zoneId)
-                                        },
-                                        onRemoveSyncedZonePlacement = { zoneId ->
-                                            viewModel.removeSyncedZonePlacement(zoneId)
-                                        },
-                                        onResetSyncedLifeAndBoard = {
-                                            viewModel.resetSyncedLifeAndBoard()
-                                        },
+                                        onSelectSyncSeat = { viewModel.setLocalSyncSeat(it) },
+                                        onJoinSyncMatchById = { viewModel.joinSyncedMatchById(it) },
+                                        onAdjustSyncedLifePoints = { seat, delta -> viewModel.adjustSyncedLifePoints(seat, delta) },
+                                        onSetSyncedLifePointsExact = { seat, exact -> viewModel.setSyncedLifePointsExact(seat, exact) },
+                                        onDeploySyncedCardForActiveSeat = { viewModel.deploySyncedCardForActiveSeat() },
+                                        onToggleSyncedZoneOrientation = { viewModel.toggleSyncedZoneOrientation(it) },
+                                        onRemoveSyncedZonePlacement = { viewModel.removeSyncedZonePlacement(it) },
+                                        onResetSyncedLifeAndBoard = { viewModel.resetSyncedLifeAndBoard() },
                                         persistentEventsState = persistentMatchEventsState,
-                                        onLogQuickCardPlay = { cardName ->
-                                            viewModel.logQuickCardPlayedEvent(cardName)
-                                        },
-                                        onLogQuickLifeReduction = { amount ->
-                                            viewModel.logQuickLifeReductionEvent(amount)
-                                        },
-                                        onLogCustomGameEvent = { summary ->
-                                            viewModel.logCustomGameEvent(summary)
-                                        }
+                                        onLogQuickCardPlay = { viewModel.logQuickCardPlayedEvent(it) },
+                                        onLogQuickLifeReduction = { viewModel.logQuickLifeReductionEvent(it) },
+                                        onLogCustomGameEvent = { viewModel.logCustomGameEvent(it) },
+                                        activeFormatBlueprint = activeFormatBlueprint,
+                                        onRecordIcMemorialEntry = { entry -> icMemorialFeed.add(0, entry) }
                                     )
                                 }
-                                NexusSection.DISCORD_RP -> {
-                                    DiscordRoleplayScreen(
+
+                                NexusSection.LORE -> {
+                                    LoreAvatarsMemorialScreen(
+                                        wikis = registryBundle.wikis,
+                                        icFeedEntries = icMemorialFeed.toList(),
+                                        onStatusMessage = { localBannerMessage = it }
+                                    )
+                                }
+
+                                NexusSection.DISCORD_SETTINGS -> {
+                                    DiscordSettingsHubScreen(
+                                        initialSubTab = discordSubTab,
                                         selectedBaseVariantId = selectedBaseVariantId,
+                                        signedInAccountLabel = currentUserName,
+                                        catalogBlueprints = allBlueprints,
+                                        loadedMatchCards = allCardPacks.flatMap { it.cards },
+                                        botsDirectory = registryBundle.bots,
                                         discordServersState = discordServersState,
                                         rpCharactersState = rpCharactersState,
                                         discordMessagesState = discordMessagesState,
                                         selectedDiscordServerId = selectedDiscordServerId,
+                                        discordEnvSettings = discordEnvSettings,
+                                        discordBridgeConfig = discordBridgeConfig,
+                                        discordBroadcastHistory = discordBroadcastHistory,
+                                        activeMatch = currentActiveMatch,
+                                        availableDecks = availableDecksList,
                                         onSelectServer = { viewModel.selectDiscordServer(it) },
                                         onJoinOrAddServer = { guildId, sName, chanId, chanName, baseId, lore ->
                                             viewModel.joinOrAddDiscordServer(guildId, sName, chanId, chanName, baseId, lore)
@@ -907,46 +734,29 @@ fun NexusTcgMainScreen(
                                         },
                                         onToggleMessageReviewed = { viewModel.toggleDiscordMessageReviewed(it) },
                                         onDeleteMessage = { viewModel.deleteDiscordMessage(it) },
-                                        onOpenSettings = { currentSection = NexusSection.SETTINGS },
-                                        discordEnvSettings = discordEnvSettings,
-                                        discordBridgeConfig = discordBridgeConfig,
-                                        discordBroadcastHistory = discordBroadcastHistory,
-                                        activeMatch = currentActiveMatch,
-                                        availableDecks = availableDecksList,
                                         onUpdateBridgeConfig = { channel, autoStart, autoWinner, autoDeck ->
                                             viewModel.updateDiscordBridgeConfig(channel, autoStart, autoWinner, autoDeck)
                                         },
-                                        onBroadcastGameStart = { match, deck ->
-                                            viewModel.broadcastGameStartToDiscord(match = match, deck = deck)
-                                        },
-                                        onBroadcastDeckSummary = { deck ->
-                                            viewModel.broadcastDeckSummaryToDiscord(deck = deck)
-                                        },
+                                        onBroadcastGameStart = { match, deck -> viewModel.broadcastGameStartToDiscord(match = match, deck = deck) },
+                                        onBroadcastDeckSummary = { deck -> viewModel.broadcastDeckSummaryToDiscord(deck = deck) },
                                         onBroadcastMatchWinner = { match, winnerOverride, deck ->
-                                            viewModel.broadcastMatchWinnerToDiscord(
-                                                match = match,
-                                                winnerNameOverride = winnerOverride,
-                                                deck = deck
-                                            )
-                                        }
-                                    )
-                                }
-                                NexusSection.SETTINGS -> {
-                                    SettingsScreen(
-                                        discordEnvSettings = discordEnvSettings,
-                                        signedInAccountLabel = currentUserName,
+                                            viewModel.broadcastMatchWinnerToDiscord(match = match, winnerNameOverride = winnerOverride, deck = deck)
+                                        },
                                         onToggleDiscordIntegration = { viewModel.setDiscordIntegrationEnabled(it) },
                                         onSaveDiscordEnvCredentials = { token, webhook, clientId, enabled ->
                                             viewModel.saveDiscordEnvCredentials(token, webhook, clientId, enabled)
                                         },
                                         onResetToBuildConfigDefaults = { viewModel.resetDiscordEnvToBuildConfig() },
                                         onTestDiscordConnection = { viewModel.testDiscordEnvConnection() },
-                                        onNavigateToDiscordRp = { currentSection = NexusSection.DISCORD_RP }
+                                        onOpenHandshakeArea = {
+                                            vaultSubTab = 4
+                                            currentSection = NexusSection.VAULT
+                                        },
+                                        onStatusMessage = { localBannerMessage = it }
                                     )
                                 }
                             }
 
-                            // Floating Ruleset & Protocol Debug Inspector Modal Overlay
                             FloatingRulesetProtocolInspectorHost(
                                 isOpen = isRulesetInspectorOpen,
                                 onToggleOpen = { isRulesetInspectorOpen = it },
@@ -960,40 +770,65 @@ fun NexusTcgMainScreen(
                                 syncedBoardState = syncedBoardState,
                                 onSelectBaseVariant = { viewModel.selectBaseVariant(it) },
                                 onResetToBaseStandard = { viewModel.resetToActiveBaseStandard() },
-                                onStepGameEnginePhase = { viewModel.stepGameEnginePhase(null) },
-                                modifier = Modifier.fillMaxSize()
+                                onStepGameEnginePhase = { viewModel.stepGameEnginePhase(currentActiveMatch) }
                             )
-
-                            // Confirmation Modal when a Client is selected to open in a new Window / App
-                            pendingClientLaunch?.let { selection ->
-                                ConfirmOpenClientWindowDialog(
-                                    selection = selection,
-                                    onDismissKeepInHub = { pendingClientLaunch = null },
-                                    onConfirmOpenNewWindow = { openAdjacent, openSeparateTask ->
-                                        pendingClientLaunch = null
-                                        ClientWindowLauncher.openClientSystemWindow(
-                                            context = context,
-                                            client = selection.client,
-                                            baseVariantId = selection.baseVariantId,
-                                            activeMatchId = selection.activeMatchId,
-                                            openInAdjacentWindow = openAdjacent,
-                                            openAsSeparateDocumentTask = openSeparateTask
-                                        )
-                                    },
-                                    onConfirmOpenExternalApp = { targetUri ->
-                                        pendingClientLaunch = null
-                                        ClientWindowLauncher.openExternalOrSeparateWindow(
-                                            context = context,
-                                            uriString = targetUri,
-                                            fallbackClient = selection.client,
-                                            fallbackBaseVariantId = selection.baseVariantId
-                                        )
-                                    }
-                                )
-                            }
                         }
                     }
                 }
+            }
+
+            // Automatic On-Open Alignment & Update Check Pop-Up
+            val currentReport = alignmentReport
+            if (showAlignmentPopup && currentReport != null) {
+                StartupAlignmentDialog(
+                    report = currentReport,
+                    onOpenHandshakeArea = {
+                        showAlignmentPopup = false
+                        vaultSubTab = 4
+                        currentSection = NexusSection.VAULT
+                    },
+                    onOpenCardMakerApp = {
+                        showAlignmentPopup = false
+                        val res = NexusHubBridgeService.openCardMakerAppForHandshake(context)
+                        localBannerMessage = res.statusMessage
+                    },
+                    onDismissForCommitSha = {
+                        StartupAlignmentChecker.dismissForCommitKey(context, currentReport.effectiveCommitKey)
+                        showAlignmentPopup = false
+                    }
+                )
+            }
+
+            pendingClientLaunch?.let { selection ->
+                ConfirmOpenClientWindowDialog(
+                    selection = selection,
+                    onDismissKeepInHub = { pendingClientLaunch = null },
+                    onConfirmOpenNewWindow = { openAdjacent, openSeparateTask ->
+                        pendingClientLaunch = null
+                        if (selection.client != null) {
+                            viewModel.selectClientAndSwitchSystem(selection.client)
+                        } else {
+                            viewModel.selectBaseVariant(selection.baseVariantId)
+                        }
+                        ClientWindowLauncher.openClientSystemWindow(
+                            context = context,
+                            client = selection.client,
+                            baseVariantId = selection.baseVariantId,
+                            activeMatchId = selection.activeMatchId,
+                            openInAdjacentWindow = openAdjacent,
+                            openAsSeparateDocumentTask = openSeparateTask
+                        )
+                    },
+                    onConfirmOpenExternalApp = { targetUri ->
+                        pendingClientLaunch = null
+                        ClientWindowLauncher.openExternalOrSeparateWindow(
+                            context = context,
+                            uriString = targetUri,
+                            fallbackClient = selection.client,
+                            fallbackBaseVariantId = selection.baseVariantId
+                        )
+                    }
+                )
             }
         }
     }

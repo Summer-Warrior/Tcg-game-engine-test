@@ -1,22 +1,24 @@
 package com.example.data
 
+import kotlin.math.roundToInt
+
 /**
  * Canonical 20-Color Pie Full Progression (Layers 0 to 20 & Unique Omni Pip {Ω}).
  *
  * Design invariants:
  * - Zero default colors selected on load (`defaultSelectedCodes = emptySet()`).
  * - Always displays all pips unless the user actively filters by selecting 1..20 colors.
- * - Strictly color geometry and pip syntax only — zero invented philosophies, emotions,
- *   or moral alignments are attached to any color.
- * - Layers 1–19 follow Diamond / Option B Format; Layer 20 uses the bespoke Unique Omni Pip
- *   "Omnichroma" {Ω}.
+ * - Strictly scientific angular spin-polarization vectors under UMFT — zero invented
+ *   philosophies, emotions, or moral alignments are attached to any color.
+ * - Layers 1–19 follow Diamond / Option B Format; Layer 20 uses 6 bespoke sacred celestial
+ *   geometries for Omnichroma {Ω}: {Ω·M}, {Ω·C}, {Ω·S}, {Ω·V}, {Ω·E}, {Ω·A}.
  */
 enum class PairCategory(val displayName: String, val expectedCount: Int) {
     ALLIED_ANCHORS("Allied Anchors", 5),
     ENEMY_ANCHORS("Enemy Anchors", 5),
     OPPOSITES_180("180° Opposites", 10),
-    ANCHOR_BRIDGE("Anchor–Bridge", 75),
-    BRIDGE_BRIDGE("Bridge–Bridge", 105)
+    ANCHOR_BRIDGE("Anchor–Bridge", 70),
+    BRIDGE_BRIDGE("Bridge–Bridge", 100)
 }
 
 data class PieColorEntry(
@@ -30,6 +32,7 @@ data class PieColorEntry(
     val tintPip: String get() = "{$code:T}"
     val shadePip: String get() = "{$code:S}"
     val mutePip: String get() = "{$code:M}"
+    val hexRgbString: String get() = String.format("#%06X", (hexArgb and 0xFFFFFFL).toInt())
 }
 
 data class OptionBFusedPair(
@@ -39,8 +42,10 @@ data class OptionBFusedPair(
     val wheelDistance: Int
 ) {
     val pip: String get() = "{${first.code}/${second.code}}"
+    val dotPip: String get() = "{${first.code}·${second.code}}"
     val label: String get() = "${first.name} / ${second.name}"
     val codes: Set<String> get() = setOf(first.code, second.code)
+    val mixedHexArgb: Long get() = TwentyColorPieCatalog.mixHex(first.hexArgb, second.hexArgb)
 }
 
 data class CuratedTrioEntry(
@@ -48,6 +53,24 @@ data class CuratedTrioEntry(
     val codes: List<String>
 ) {
     val pip: String get() = "{${codes.joinToString("/")}}"
+}
+
+data class MidLayerSampleEntry(
+    val layerCount: Int,
+    val sampleIndex: Int,
+    val codes: List<String>,
+    val label: String
+) {
+    val pip: String get() = "{${codes.joinToString("/")}}"
+}
+
+data class Layer18SubtractionEntry(
+    val omittedA: PieColorEntry,
+    val omittedB: PieColorEntry,
+    val includedCodes: List<String>
+) {
+    val pip: String get() = "{-(${omittedA.code},${omittedB.code})}"
+    val label: String get() = "All Minus ${omittedA.name} & ${omittedB.name}"
 }
 
 data class Layer19SubtractionEntry(
@@ -58,6 +81,13 @@ data class Layer19SubtractionEntry(
     val label: String get() = "All Minus ${omittedColor.name}"
 }
 
+data class OmniGeometryVariant(
+    val code: String,
+    val shortSuffix: String,
+    val geometryName: String,
+    val description: String
+)
+
 object TwentyColorPieCatalog {
     const val COLORLESS_PIP: String = "{C}"
     const val OMNICHROMA_PIP: String = "{Ω}"
@@ -65,13 +95,21 @@ object TwentyColorPieCatalog {
 
     val defaultSelectedCodes: Set<String> = emptySet()
 
-    val omniVariants: List<Pair<String, String>> = listOf(
-        "{Ω}" to "Omnichroma Base Prism",
-        "{Ω·M}" to "Omnichroma Mandala",
-        "{Ω·P}" to "Omnichroma Prism",
-        "{Ω·S}" to "Omnichroma Solar",
-        "{Ω·E}" to "Omnichroma Eclipse"
+    /**
+     * Exact 6 bespoke Layer 20 Omnichroma {Ω} sacred celestial geometries.
+     */
+    val omniGeometryVariants: List<OmniGeometryVariant> = listOf(
+        OmniGeometryVariant("{Ω·M}", "M", "Hexagram Star", "Interlaced 6-point celestial star prism"),
+        OmniGeometryVariant("{Ω·C}", "C", "Celestial Octagram", "8-point orbital star harmonic"),
+        OmniGeometryVariant("{Ω·S}", "S", "Sacred Halo Ring", "Concentric iridescent spectral ring"),
+        OmniGeometryVariant("{Ω·V}", "V", "Astral Merkaba", "Dual counter-rotating tetrahedron vector"),
+        OmniGeometryVariant("{Ω·E}", "E", "Primordial Sunburst", "20-ray full-wheel corona burst"),
+        OmniGeometryVariant("{Ω·A}", "A", "Solar Astrolabe", "Calibrated angular spin-vector astrolabe")
     )
+
+    val validOmniSuffixes: Set<String> = omniGeometryVariants.mapTo(LinkedHashSet()) { it.shortSuffix }
+
+    val omniVariants: List<Pair<String, String>> = omniGeometryVariants.map { it.code to it.geometryName }
 
     val valueStateSuffixes: List<Pair<String, String>> = listOf(
         ":T" to "Tint",
@@ -103,6 +141,51 @@ object TwentyColorPieCatalog {
     )
 
     val validColorCodes: Set<String> = wheelColors.mapTo(LinkedHashSet()) { it.code }
+    val colorByCode: Map<String, PieColorEntry> = wheelColors.associateBy { it.code }
+
+    /**
+     * Exact RGB linear midpoint mixing (aligned with MPV Card Maker `mixHex`).
+     */
+    fun mixHex(argbA: Long, argbB: Long, weightB: Float = 0.5f): Long {
+        val wB = weightB.coerceIn(0f, 1f)
+        val wA = 1f - wB
+        val rA = ((argbA shr 16) and 0xFF).toInt()
+        val gA = ((argbA shr 8) and 0xFF).toInt()
+        val bA = (argbA and 0xFF).toInt()
+        val rB = ((argbB shr 16) and 0xFF).toInt()
+        val gB = ((argbB shr 8) and 0xFF).toInt()
+        val bB = (argbB and 0xFF).toInt()
+        val r = (rA * wA + rB * wB).roundToInt().coerceIn(0, 255)
+        val g = (gA * wA + gB * wB).roundToInt().coerceIn(0, 255)
+        val b = (bA * wA + bB * wB).roundToInt().coerceIn(0, 255)
+        return (0xFFL shl 24) or (r.toLong() shl 16) or (g.toLong() shl 8) or b.toLong()
+    }
+
+    /**
+     * Desaturates an RGB color toward neutral luminance gray (`muteHex`).
+     */
+    fun muteHex(argb: Long, muteFactor: Float = 0.45f): Long {
+        val f = muteFactor.coerceIn(0f, 1f)
+        val r = ((argb shr 16) and 0xFF).toInt()
+        val g = ((argb shr 8) and 0xFF).toInt()
+        val b = (argb and 0xFF).toInt()
+        val gray = (0.299f * r + 0.587f * g + 0.114f * b).roundToInt()
+        val outR = (r + (gray - r) * f).roundToInt().coerceIn(0, 255)
+        val outG = (g + (gray - g) * f).roundToInt().coerceIn(0, 255)
+        val outB = (b + (gray - b) * f).roundToInt().coerceIn(0, 255)
+        return (0xFFL shl 24) or (outR.toLong() shl 16) or (outG.toLong() shl 8) or outB.toLong()
+    }
+
+    /**
+     * Returns high-contrast foreground color (dark ink vs crisp white) for any ARGB background.
+     */
+    fun contrastTextHex(bgArgb: Long): Long {
+        val r = ((bgArgb shr 16) and 0xFF).toInt()
+        val g = ((bgArgb shr 8) and 0xFF).toInt()
+        val b = (bgArgb and 0xFF).toInt()
+        val yiq = (r * 299 + g * 587 + b * 114) / 1000
+        return if (yiq >= 145) 0xFF0B101DL else 0xFFF8FAFFL
+    }
 
     /**
      * All 190 unique unordered pairs (C(20, 2) = 190) classified strictly by wheel geometry.
@@ -137,6 +220,40 @@ object TwentyColorPieCatalog {
         listOf("U", "In", "Vi"), listOf("Vi", "Ob", "B"), listOf("B", "Cr", "Mg"),
         listOf("R", "Or", "Am"), listOf("G", "Ja", "Aq")
     ).mapIndexed { index, codes -> CuratedTrioEntry(index + 1, codes) }
+
+    /**
+     * 25 Curated Layer 4–17 Diamond / Option B Mid-to-High Mixture samples (every layer 4..17 represented).
+     */
+    val layers4To17Samples: List<MidLayerSampleEntry> by lazy {
+        buildList(25) {
+            var counter = 1
+            for (layer in 4..17) {
+                val baseSlice = wheelColors.take(layer).map { it.code }
+                add(MidLayerSampleEntry(layer, counter++, baseSlice, "Layer $layer Sequential Arc"))
+                if (layer <= 14) {
+                    val anchorStride = (0 until layer).map { idx -> wheelColors[(idx * 3) % 20].code }.distinct()
+                    val padded = if (anchorStride.size == layer) {
+                        anchorStride
+                    } else {
+                        (anchorStride + wheelColors.map { it.code }).distinct().take(layer)
+                    }
+                    add(MidLayerSampleEntry(layer, counter++, padded, "Layer $layer Stride Harmonic"))
+                }
+            }
+        }
+    }
+
+    /**
+     * Layer 18 ("All Minus Pair") subtraction symmetry samples (10 diametrically opposed pairs).
+     */
+    val layer18AllMinusPairSamples: List<Layer18SubtractionEntry> by lazy {
+        (0 until 10).map { k ->
+            val a = wheelColors[k]
+            val b = wheelColors[(k + 10) % 20]
+            val included = wheelColors.filter { it.code != a.code && it.code != b.code }.map { it.code }
+            Layer18SubtractionEntry(a, b, included)
+        }
+    }
 
     /**
      * All 20 Layer 19 ("All Minus One") subtraction combinations.

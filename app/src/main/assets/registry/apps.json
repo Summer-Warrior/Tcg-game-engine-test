@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.1.0",
+  "companionApps": [
+    {
+      "id": "mpv_card_maker",
+      "name": "MPV TCG Card Making Software (Updated)",
+      "category": "COMPANION_AUTHORING",
+      "repoUrl": "https://github.com/Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
+      "webUrl": "https://summer-warrior.github.io/MPV-TCG-Card-Making-Software-Updated/",
+      "androidPackage": "com.aistudio.tcgstudio.kqrmvx",
+      "deepLinkUri": "tcgstudio://nexus-hub?hubSync=1&from=nexustcg",
+      "description": "Bidirectional card-coding, 20-Color Pie authoring, and 21-digit card pack exporter synced with NexusTCG non-locked clients."
+    },
+    {
+      "id": "project_mpv_master_hub",
+      "name": "Project MPV RP Master Hub",
+      "category": "MASTER_HUB",
+      "repoUrl": "https://github.com/Summer-Warrior/Project-MPV-RP-Master-Hub",
+      "webUrl": "https://summer-warrior.github.io/Project-MPV-RP-Master-Hub/",
+      "androidPackage": "",
+      "deepLinkUri": "nexus-master-hub://open",
+      "description": "Central platform router, Web Tabletop launcher, and cross-repository index."
+    },
+    {
+      "id": "asset_holding_software",
+      "name": "Asset Holding Software (Vault)",
+      "category": "ASSET_VAULT",
+      "repoUrl": "https://github.com/Summer-Warrior/Asset-Holding-Software",
+      "webUrl": "https://github.com/Summer-Warrior/Asset-Holding-Software",
+      "androidPackage": "",
+      "deepLinkUri": "",
+      "description": "Shared art, sprite, and blueprint asset repository for MPV ecosystem apps."
+    }
+  ],
+  "pegasusGamesArcade": [
+    {
+      "id": "pegasus_manga_man",
+      "name": "Manga Man!",
+      "category": "PEGASUS_ARCADE",
+      "boardArchetype": "video-game-action-or-roguelike",
+      "description": "Pegasus Games Arcade side-activity blueprint — comic-panel action deck runner."
+    },
+    {
+      "id": "pegasus_monster_world",
+      "name": "Monster World",
+      "category": "PEGASUS_ARCADE",
+      "boardArchetype": "tactical-grid",
+      "description": "Pegasus Games Arcade tabletop RPG diorama with dice-skill resolution."
+    },
+    {
+      "id": "pegasus_capsule_monsters",
+      "name": "Capsule Monsters",
+      "category": "PEGASUS_ARCADE",
+      "boardArchetype": "tactical-grid",
+      "description": "Grid-based capsule deployment arena inspired by classic Duel Monsters side games."
+    },
+    {
+      "id": "pegasus_combat_cards",
+      "name": "Combat Cards",
+      "category": "PEGASUS_ARCADE",
+      "boardArchetype": "directional-and-territory-grid",
+      "description": "Fast tactical arcade card clash for tournament intermissions."
+    },
+    {
+      "id": "pegasus_finish_dash",
+      "name": "Finish Dash",
+      "category": "PEGASUS_ARCADE",
+      "boardArchetype": "tug-of-war-track",
+      "description": "Speed-lane arcade sprint deck mode."
+    }
+  ]
+}

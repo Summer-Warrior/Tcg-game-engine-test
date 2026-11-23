@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.1.0",
+  "securityPolicy": "ZERO_CLIENT_SIDE_BOT_TOKENS_WEBHOOK_AND_OAUTH2_INVITE_ONLY",
+  "bots": [
+    {
+      "id": "nexus_rp_relay_oauth",
+      "name": "NexusTCG Match & RP Broadcaster",
+      "clientId": "1089000000000000000",
+      "oauthPermissions": "536964096",
+      "deliveryMode": "USER_WEBHOOK_URL",
+      "description": "Broadcasts Game Start, Deck Summaries, Match Winners, and IC/OOC RP dialogue using your local Discord Channel Webhook URL."
+    },
+    {
+      "id": "memorial_forge_scribe_oauth",
+      "name": "Memorial Forge IC Archivist",
+      "clientId": "1089000000000000001",
+      "oauthPermissions": "536964096",
+      "deliveryMode": "USER_WEBHOOK_URL",
+      "description": "Posts event-flagged IC duel milestones for community voting via Webhook embeds (never reads tokens client-side)."
+    }
+  ]
+}

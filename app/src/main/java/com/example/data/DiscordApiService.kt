@@ -115,18 +115,16 @@ data class DiscordEnvSettingsState(
 }
 
 /**
- * Discord REST API v10 & Webhook Roleplay Client for NexusTCG.
+ * Discord Webhook Broadcast & Roleplay Client for NexusTCG.
  *
- * Reads baseline values from `.env` (`BuildConfig.DISCORD_BOT_TOKEN` and `BuildConfig.DISCORD_WEBHOOK_URL`)
- * and supports toggling Discord bot integration on/off and securely overriding `.env` keys
- * at runtime from the Settings screen.
+ * Strictly zero client-side Discord Bot Tokens or `client_secret`:
+ * uses `BuildConfig.DISCORD_WEBHOOK_URL` (or runtime Webhook URL in Settings)
+ * plus public OAuth2 server invite URLs.
  */
 object DiscordApiService {
 
-    private const val DISCORD_API_BASE = "https://discord.com/api/v10"
     private const val PREFS_NAME = "nexus_tcg_discord_env_settings"
     private const val KEY_INTEGRATION_ENABLED = "DISCORD_INTEGRATION_ENABLED"
-    private const val KEY_BOT_TOKEN = "DISCORD_BOT_TOKEN"
     private const val KEY_WEBHOOK_URL = "DISCORD_WEBHOOK_URL"
     private const val KEY_BOT_CLIENT_ID = "DISCORD_CLIENT_ID"
     private const val KEY_HAS_RUNTIME_OVERRIDE = "HAS_RUNTIME_OVERRIDE"
@@ -191,10 +189,6 @@ object DiscordApiService {
     fun init(context: Context) {
         val sharedPrefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = sharedPrefs
-        // Scrub any legacy client-side Bot Token if previously saved
-        if (sharedPrefs.contains(KEY_BOT_TOKEN)) {
-            sharedPrefs.edit().remove(KEY_BOT_TOKEN).apply()
-        }
         val envWebhook = readBuildConfigWebhookUrl()
 
         val enabled = sharedPrefs.getBoolean(KEY_INTEGRATION_ENABLED, true)
@@ -294,7 +288,6 @@ object DiscordApiService {
         prefs?.edit()?.apply {
             putBoolean(KEY_INTEGRATION_ENABLED, integrationEnabled)
             putBoolean(KEY_HAS_RUNTIME_OVERRIDE, true)
-            remove(KEY_BOT_TOKEN)
             putString(KEY_WEBHOOK_URL, cleanWebhook)
             putString(KEY_BOT_CLIENT_ID, cleanClientId)
             apply()
@@ -327,7 +320,6 @@ object DiscordApiService {
         val envWebhook = readBuildConfigWebhookUrl()
         prefs?.edit()?.apply {
             putBoolean(KEY_HAS_RUNTIME_OVERRIDE, false)
-            remove(KEY_BOT_TOKEN)
             remove(KEY_WEBHOOK_URL)
             apply()
         }
@@ -365,18 +357,17 @@ object DiscordApiService {
     }
 
     /**
-     * Tests the currently configured `DISCORD_BOT_TOKEN` and `DISCORD_WEBHOOK_URL` against
-     * Discord's REST v10 endpoints (`/users/@me` and the Webhook URL) and updates `lastVerificationStatus`.
+     * Verifies the currently configured `DISCORD_WEBHOOK_URL` via GET request
+     * and updates `lastVerificationStatus`. Zero client-side Bot Tokens are used.
      */
     suspend fun verifyDiscordCredentials(): String = withContext(Dispatchers.IO) {
         val state = _settingsState.value
         if (!state.integrationEnabled) {
-            val msg = "Discord Bot Integration is currently toggled OFF. Enable it first to test live API connectivity."
+            val msg = "Discord Webhook Integration is currently toggled OFF. Enable it first to test live connectivity."
             _settingsState.value = state.copy(lastVerificationStatus = msg)
             return@withContext msg
         }
 
-        val token = getConfiguredBotToken()
         val webhook = getConfiguredWebhookUrl()
         if (webhook.isEmpty()) {
             val msg = "No valid DISCORD_WEBHOOK_URL configured. Operating in Cloud RP Relay mode (zero client-side Bot Tokens)."
@@ -384,202 +375,26 @@ object DiscordApiService {
             return@withContext msg
         }
 
-        val diagnostics = mutableListOf<String>()
-
-        if (token.isNotEmpty()) {
-            val botCheck = runCatching {
-                val req = Request.Builder()
-                    .url("$DISCORD_API_BASE/users/@me")
-                    .header("Authorization", "Bot $token")
-                    .header("User-Agent", "NexusTCG-Android-DiscordRP (https://nexustcg.io, 1.0)")
-                    .get()
-                    .build()
-                httpClient.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        val obj = JSONObject(resp.body?.string().orEmpty())
-                        val botName = obj.optString("username", "DiscordBot")
-                        "DISCORD_BOT_TOKEN Verified (@$botName)"
-                    } else {
-                        "DISCORD_BOT_TOKEN HTTP ${resp.code}"
-                    }
-                }
-            }.getOrElse { e ->
-                "DISCORD_BOT_TOKEN Error (${e.javaClass.simpleName})"
-            }
-            diagnostics.add(botCheck)
-        }
-
-        if (webhook.isNotEmpty()) {
-            val webhookCheck = runCatching {
-                val req = Request.Builder()
-                    .url(webhook)
-                    .get()
-                    .build()
-                httpClient.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        val obj = JSONObject(resp.body?.string().orEmpty())
-                        val hookName = obj.optString("name", "RP Webhook")
-                        "DISCORD_WEBHOOK_URL Verified ($hookName)"
-                    } else {
-                        "DISCORD_WEBHOOK_URL HTTP ${resp.code}"
-                    }
-                }
-            }.getOrElse { e ->
-                "DISCORD_WEBHOOK_URL Error (${e.javaClass.simpleName})"
-            }
-            diagnostics.add(webhookCheck)
-        }
-
-        val summary = diagnostics.joinToString(" • ")
-        _settingsState.value = _settingsState.value.copy(lastVerificationStatus = summary)
-        summary
-    }
-
-    /**
-     * Fetches the Discord servers (guilds) that the configured Discord Bot belongs to,
-     * along with the first available text channel for roleplay and TCG duel actions.
-     */
-    suspend fun fetchBotGuilds(): Result<List<DiscordRemoteGuild>> = withContext(Dispatchers.IO) {
-        runCatching {
-            require(isIntegrationEnabled()) {
-                "Discord Bot integration is toggled OFF in Settings."
-            }
-            val token = getConfiguredBotToken()
-            require(token.isNotEmpty()) {
-                "DISCORD_BOT_TOKEN is not configured in Settings or .env."
-            }
-
-            val guildReq = Request.Builder()
-                .url("$DISCORD_API_BASE/users/@me/guilds?with_counts=true")
-                .header("Authorization", "Bot $token")
-                .header("User-Agent", "NexusTCG-Android-DiscordRP (https://nexustcg.io, 1.0)")
-                .get()
-                .build()
-
-            httpClient.newCall(guildReq).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Discord API /users/@me/guilds returned HTTP ${response.code}")
-                }
-                val bodyStr = response.body?.string().orEmpty()
-                val guildsArray = JSONArray(bodyStr)
-                val results = mutableListOf<DiscordRemoteGuild>()
-
-                for (i in 0 until guildsArray.length().coerceAtMost(8)) {
-                    val gObj = guildsArray.getJSONObject(i)
-                    val guildId = gObj.optString("id", "")
-                    val guildName = gObj.optString("name", "Discord TCG Server")
-                    val memberCount = gObj.optLong("approximate_member_count", 150L).coerceAtLeast(1L)
-
-                    var channelId = "rp-${guildId.takeLast(6)}"
-                    var channelName = "#duel-arena-rp"
-
-                    runCatching {
-                        val chanReq = Request.Builder()
-                            .url("$DISCORD_API_BASE/guilds/$guildId/channels")
-                            .header("Authorization", "Bot $token")
-                            .header("User-Agent", "NexusTCG-Android-DiscordRP (https://nexustcg.io, 1.0)")
-                            .get()
-                            .build()
-                        httpClient.newCall(chanReq).execute().use { chanResp ->
-                            if (chanResp.isSuccessful) {
-                                val chanArr = JSONArray(chanResp.body?.string().orEmpty())
-                                for (cIdx in 0 until chanArr.length()) {
-                                    val cObj = chanArr.getJSONObject(cIdx)
-                                    if (cObj.optInt("type", -1) == 0) {
-                                        channelId = cObj.optString("id", channelId)
-                                        channelName = "#" + cObj.optString("name", "duel-arena-rp")
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (guildId.isNotEmpty()) {
-                        results.add(
-                            DiscordRemoteGuild(
-                                guildId = guildId,
-                                serverName = guildName,
-                                defaultChannelId = channelId,
-                                defaultChannelName = channelName,
-                                approxMemberCount = memberCount
-                            )
-                        )
-                    }
-                }
-                results
-            }
-        }
-    }
-
-    /**
-     * Reviews recent chat messages from a Discord channel (`GET /channels/{channelId}/messages`).
-     */
-    suspend fun fetchChannelMessages(
-        channelId: String,
-        limit: Int = 15
-    ): Result<List<DiscordRemoteMessage>> = withContext(Dispatchers.IO) {
-        runCatching {
-            require(isIntegrationEnabled()) {
-                "Discord Bot integration is toggled OFF in Settings."
-            }
-            val token = getConfiguredBotToken()
-            require(token.isNotEmpty()) {
-                "DISCORD_BOT_TOKEN is not configured in Settings or .env."
-            }
-            val cleanChannelId = channelId.trim()
-            require(cleanChannelId.all { it.isDigit() }) {
-                "Channel ID '$cleanChannelId' is a Cloud RP channel; numeric Discord Snowflake required for REST fetch."
-            }
-
+        val webhookCheck = runCatching {
             val req = Request.Builder()
-                .url("$DISCORD_API_BASE/channels/$cleanChannelId/messages?limit=${limit.coerceIn(1, 30)}")
-                .header("Authorization", "Bot $token")
-                .header("User-Agent", "NexusTCG-Android-DiscordRP (https://nexustcg.io, 1.0)")
+                .url(webhook)
                 .get()
                 .build()
-
-            httpClient.newCall(req).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Discord API /channels/$cleanChannelId/messages returned HTTP ${response.code}")
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val obj = JSONObject(resp.body?.string().orEmpty())
+                    val hookName = obj.optString("name", "RP Webhook")
+                    "DISCORD_WEBHOOK_URL Verified ($hookName)"
+                } else {
+                    "DISCORD_WEBHOOK_URL HTTP ${resp.code}"
                 }
-                val arr = JSONArray(response.body?.string().orEmpty())
-                val list = mutableListOf<DiscordRemoteMessage>()
-                for (i in 0 until arr.length()) {
-                    val msgObj = arr.getJSONObject(i)
-                    val msgId = msgObj.optString("id", "")
-                    val content = msgObj.optString("content", "").trim()
-                    val authorObj = msgObj.optJSONObject("author")
-                    val authorName = authorObj?.optString("global_name")
-                        ?.takeIf { it.isNotBlank() && it != "null" }
-                        ?: authorObj?.optString("username", "Discord Duelist")
-                        ?: "Discord Duelist"
-                    val isWebhookOrBot = msgObj.has("webhook_id") || (authorObj?.optBoolean("bot") == true)
-
-                    var embedSummary = ""
-                    val embedsArr = msgObj.optJSONArray("embeds")
-                    if (embedsArr != null && embedsArr.length() > 0) {
-                        val firstEmbed = embedsArr.getJSONObject(0)
-                        val title = firstEmbed.optString("title", "")
-                        val desc = firstEmbed.optString("description", "")
-                        embedSummary = listOf(title, desc).filter { it.isNotBlank() }.joinToString(" — ")
-                    }
-
-                    if (content.isNotEmpty() || embedSummary.isNotEmpty()) {
-                        list.add(
-                            DiscordRemoteMessage(
-                                messageId = msgId,
-                                authorName = authorName.take(60),
-                                isWebhookOrBot = isWebhookOrBot,
-                                content = content.ifEmpty { embedSummary }.take(500),
-                                embedSummary = embedSummary.take(240)
-                            )
-                        )
-                    }
-                }
-                list
             }
+        }.getOrElse { e ->
+            "DISCORD_WEBHOOK_URL Error (${e.javaClass.simpleName})"
         }
+
+        _settingsState.value = _settingsState.value.copy(lastVerificationStatus = webhookCheck)
+        webhookCheck
     }
 
     /**
@@ -651,36 +466,7 @@ object DiscordApiService {
             }
         }
 
-        // 2. Try Discord Bot REST API if channelId is a numeric Discord Snowflake
-        val cleanChannelId = channelId.trim()
-        if (botToken.isNotEmpty() && cleanChannelId.isNotEmpty() && cleanChannelId.all { it.isDigit() }) {
-            val botContent = if (character != null) {
-                "**${character.characterName}** *(${character.characterTitle})*: $content"
-            } else {
-                content
-            }
-            val payload = JSONObject().apply {
-                put("content", botContent.take(1900))
-                put("embeds", JSONArray().put(embedObj))
-            }
-            val req = Request.Builder()
-                .url("$DISCORD_API_BASE/channels/$cleanChannelId/messages")
-                .header("Authorization", "Bot $botToken")
-                .header("User-Agent", "NexusTCG-Android-DiscordRP (https://nexustcg.io, 1.0)")
-                .header("Content-Type", "application/json")
-                .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
-                .build()
-
-            val delivered = runCatching {
-                httpClient.newCall(req).execute().use { resp -> resp.isSuccessful }
-            }.getOrDefault(false)
-
-            if (delivered) {
-                return@withContext "DELIVERED_DISCORD_API"
-            }
-        }
-
-        // 3. Cloud RP Relay fallback
+        // Cloud RP Relay fallback (Webhook-only + Firestore sync; zero client-side Bot Tokens)
         "SYNCED_RP_CHANNEL"
     }
 

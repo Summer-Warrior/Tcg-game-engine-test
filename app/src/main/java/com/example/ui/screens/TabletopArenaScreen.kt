@@ -1,58 +1,67 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.VerticalSplit
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,21 +70,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.ClientWindowLauncher
+import com.example.data.BigInt21Engine
 import com.example.data.BuiltInTcgCatalog
 import com.example.data.CardEffectType
 import com.example.data.CardTemplate
 import com.example.data.ClientNode
-import com.example.data.ClientSystemUiProfile
 import com.example.data.GameEngine
 import com.example.data.GameEngineState
 import com.example.data.MatchGameEvent
@@ -86,12 +93,10 @@ import com.example.data.SerializedZonePlacement
 import com.example.data.SyncClientSeat
 import com.example.data.TcgVariant
 import com.example.data.TurnPhase
+import com.example.engine.BoardArchetypeTemplate
+import com.example.engine.CatalogBlueprint
 import com.example.ui.components.AnimatedSyncedHealthBarCard
 import com.example.ui.components.CanvasGameBoard
-import com.example.ui.components.ComposeGameBoardLayout
-import com.example.ui.components.D3BoardStateVisualizer
-import com.example.ui.components.GameplayActionSidebarLog
-import com.example.ui.components.InGameDebugHudPanel
 import com.example.ui.components.PersistentGameEventLogCard
 import com.example.ui.components.RealtimeGameStateSyncPanel
 import com.example.ui.theme.CrimsonAlert
@@ -99,6 +104,31 @@ import com.example.ui.theme.EmeraldReady
 import com.example.ui.theme.RadiantGold
 import com.example.viewmodel.UiState
 
+private enum class TabletopDrawer(val label: String) {
+    EVENT_LOG("Event Log"),
+    CHAIN_STACK("LIFO Chain"),
+    CALC_21("21-Digit Calc"),
+    SENSORS("Sensors & Tiers"),
+    VG_MECHANICS("VG Mechanics"),
+    SYNC_HUB("Firestore Sync"),
+    DUAL_CHAT("IC / OOC Chat"),
+    ARENA_HOSTING("Format & Arena")
+}
+
+private enum class ChatChannelMode(val label: String) {
+    IC_MEMORIAL("IC (Memorial Feed)"),
+    OOC_NORMAL("OOC Normal"),
+    OOC_RULING("OOC Ruling Call")
+}
+
+/**
+ * Section 3: Consolidated Playmat-First Tabletop (~80%+ viewport).
+ *
+ * Replaces duplicated multi-widget boards with ONE unified playmat backed by a single state,
+ * a fanned Hand Dock with card zoom + foil sheen, a compact Dual-Chamber Vitality/Phase strip,
+ * and slide-over `ModalBottomSheet` drawers for secondary telemetry and mechanics.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TabletopArenaScreen(
     selectedBaseVariantId: String,
@@ -144,1459 +174,673 @@ fun TabletopArenaScreen(
     persistentEventsState: UiState<List<MatchGameEvent>> = UiState.Success(emptyList()),
     onLogQuickCardPlay: (String) -> Unit = {},
     onLogQuickLifeReduction: (Long) -> Unit = {},
-    onLogCustomGameEvent: (String) -> Unit = {}
+    onLogCustomGameEvent: (String) -> Unit = {},
+    activeFormatBlueprint: CatalogBlueprint? = null,
+    onRecordIcMemorialEntry: (String) -> Unit = {}
 ) {
-    val context = LocalContext.current
-    var showNewMatchDialog by remember { mutableStateOf(false) }
     val matches = (matchesState as? UiState.Success)?.data.orEmpty()
     val currentMatch = matches.firstOrNull { it.id == activeMatchId } ?: matches.firstOrNull()
     val effectiveBaseId = currentMatch?.baseVariantId ?: selectedBaseVariantId
-    val activeBaseSpec = BuiltInTcgCatalog.findBaseSpec(effectiveBaseId)
-    val uiProfile = BuiltInTcgCatalog.systemUiProfileFor(effectiveBaseId)
+    val uiProfile = BuiltInTcgCatalog.systemUiProfileFor(effectiveBaseId, activeClientNode)
+    val activeArchetype = BoardArchetypeTemplate.fromId(
+        activeFormatBlueprint?.boardArchetype ?: "zone-rows"
+    )
 
-    // Fallback live log list when previewing without an active Firestore match
-    val fallbackActionLogs = remember(effectiveBaseId) {
+    // Arena Hosting & Format State
+    var arenaHostingMode by rememberSaveable { mutableStateOf("Native Universe") }
+    var is3dGridOverlay by rememberSaveable { mutableStateOf(false) }
+    var optInSideProjectFormats by rememberSaveable { mutableStateOf(false) }
+
+    // Dual-Chamber Vitality State (Magic Pulse & Force Pulse + Outsider Toggle)
+    var magicPulsePct by rememberSaveable { mutableIntStateOf(100) }
+    var forcePulsePct by rememberSaveable { mutableIntStateOf(100) }
+    var outsiderVitalityMode by rememberSaveable { mutableStateOf(false) }
+
+    // Video-Game Mechanics State
+    var pxzFrontlineCount by rememberSaveable { mutableIntStateOf(3) }
+    var pxzXpGaugePct by rememberSaveable { mutableIntStateOf(75) }
+    var crossHitActive by rememberSaveable { mutableStateOf(false) }
+    var bossIntentText by rememberSaveable { mutableStateOf("Multi-Strike 1200 + Shield Break") }
+    var programAdvanceReady by rememberSaveable { mutableStateOf(true) }
+
+    // Planetary Sensor Indices & Material Tiers (1-8)
+    var magicDensity by rememberSaveable { mutableFloatStateOf(0.72f) }
+    var techIndex by rememberSaveable { mutableFloatStateOf(0.64f) }
+    var arcaneInterference by rememberSaveable { mutableFloatStateOf(0.28f) }
+    var planarStability by rememberSaveable { mutableFloatStateOf(0.88f) }
+    var activeMaterialTier by rememberSaveable { mutableIntStateOf(5) }
+
+    // Dual-Channel Chat State (IC vs OOC Normal vs OOC Ruling Calls)
+    var activeChatMode by rememberSaveable { mutableStateOf(ChatChannelMode.IC_MEMORIAL) }
+    var chatDraft by rememberSaveable { mutableStateOf("") }
+    val chatFeed = remember {
         mutableStateListOf(
-            "CTOS_JOIN_GAME: Initialized ${uiProfile.systemTitle} tabletop on $effectiveBaseId",
-            "MSG_NEW_PHASE [Turn 1]: Entered Opening Phase -> ${uiProfile.phaseStripCodes.firstOrNull() ?: "MAIN"}",
-            "MOVE_HISTORY [Turn 1 • MAIN]: Player 1 moved '${playerHand.firstOrNull()?.name ?: "Ace Unit"}' to Field [${uiProfile.fieldSlotCodes.firstOrNull() ?: "MMZ-1"}] (${playerHand.firstOrNull()?.attack21 ?: "3000"} ATK)"
+            Triple(ChatChannelMode.IC_MEMORIAL, "Tabletop Arbiter", "Playmat synchronized for ${activeFormatBlueprint?.name ?: uiProfile.systemTitle}."),
+            Triple(ChatChannelMode.OOC_RULING, "Judge", "LIFO Chain & strict zero-time-travel match rules active.")
         )
     }
-    var fallbackPhase by rememberSaveable(effectiveBaseId) {
-        mutableStateOf(uiProfile.phaseStripCodes.firstOrNull() ?: "MAIN")
+
+    // Active Drawer + Modals
+    var openDrawer by remember { mutableStateOf<TabletopDrawer?>(null) }
+    var zoomedHandCard by remember { mutableStateOf<CardTemplate?>(null) }
+    var showNewMatchDialog by remember { mutableStateOf(false) }
+    var newMatchTitle by remember { mutableStateOf("") }
+
+    val hostUnits = remember(currentMatch?.hostBoardCards, effectiveBaseId) {
+        currentMatch?.hostBoardCards.orEmpty().map { CardTemplate.fromBoardDescriptor(it, effectiveBaseId) }
     }
+    val opponentUnits = remember(currentMatch?.opponentBoardCards, effectiveBaseId) {
+        currentMatch?.opponentBoardCards.orEmpty().map { CardTemplate.fromBoardDescriptor(it, effectiveBaseId) }
+    }
+    val effectiveHostLife = if (realtimeGameSyncState.isAttached) realtimeGameSyncState.hostLife else (currentMatch?.hostLife ?: 8000L)
+    val effectiveOpponentLife = if (realtimeGameSyncState.isAttached) realtimeGameSyncState.opponentLife else (currentMatch?.opponentLife ?: 8000L)
 
-    val effectiveActionLogs: List<String> = currentMatch?.actionLog?.ifEmpty { fallbackActionLogs }
-        ?: fallbackActionLogs
-    val effectiveTurn: Long = currentMatch?.turnNumber ?: 1L
-    val effectivePhase: String = currentMatch?.activePhase ?: fallbackPhase
-
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isWideArena = maxWidth >= 680.dp
-        var isSidebarSplitDocked by rememberSaveable(isWideArena) { mutableStateOf(isWideArena) }
-
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("unified_tabletop_screen")
+    ) {
+        // 1. Compact Top Toolbar: Format/Archetype Pill + Drawer Chips
         Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left / Main Column: Live Tabletop Arena + D3 Board State Visualizer
-            LazyColumn(
+            FilterChip(
+                selected = openDrawer == TabletopDrawer.ARENA_HOSTING,
+                onClick = { openDrawer = TabletopDrawer.ARENA_HOSTING },
+                label = {
+                    Text(
+                        text = "${activeFormatBlueprint?.name?.take(18) ?: uiProfile.hudBadgeLabel} • ${if (is3dGridOverlay) "3D Grid" else "2D Mat"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                leadingIcon = { Icon(Icons.Default.GridOn, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.testTag("tabletop_format_chip")
+            )
+            DrawerChip("Sync", Icons.Default.Sync, openDrawer == TabletopDrawer.SYNC_HUB) { openDrawer = TabletopDrawer.SYNC_HUB }
+            DrawerChip("Log", Icons.Default.History, openDrawer == TabletopDrawer.EVENT_LOG) { openDrawer = TabletopDrawer.EVENT_LOG }
+            DrawerChip("Chain (${gameEngineState.effectStack.size})", Icons.Default.Layers, openDrawer == TabletopDrawer.CHAIN_STACK) { openDrawer = TabletopDrawer.CHAIN_STACK }
+            DrawerChip("21d Calc", Icons.Default.Calculate, openDrawer == TabletopDrawer.CALC_21) { openDrawer = TabletopDrawer.CALC_21 }
+            DrawerChip("Sensors", Icons.Default.Sensors, openDrawer == TabletopDrawer.SENSORS) { openDrawer = TabletopDrawer.SENSORS }
+            DrawerChip("VG Mod", Icons.Default.SportsEsports, openDrawer == TabletopDrawer.VG_MECHANICS) { openDrawer = TabletopDrawer.VG_MECHANICS }
+            DrawerChip("IC/OOC", Icons.Default.Chat, openDrawer == TabletopDrawer.DUAL_CHAT) { openDrawer = TabletopDrawer.DUAL_CHAT }
+        }
+
+        // 2. Compact Vitality & 4-Turn-Phase Strip (Dual-Chamber Magic Pulse & Force Pulse + LP)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "LP $effectiveHostLife vs $effectiveOpponentLife • ${if (outsiderVitalityMode) "Outsider Vitality" else "Magic $magicPulsePct% | Force $forcePulsePct%"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = EmeraldReady,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "$arenaHostingMode • ${activeArchetype.displayLabel} • Phase: ${gameEngineState.currentPhase.displayName} • Turn ${gameEngineState.turnNumber}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(
+                    onClick = { onStepGameEnginePhase(currentMatch) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.testTag("tabletop_next_phase_button")
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Next Phase", modifier = Modifier.size(14.dp))
+                    Text("Phase", style = MaterialTheme.typography.labelSmall)
+                }
+                OutlinedButton(
+                    onClick = { showNewMatchDialog = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.testTag("tabletop_new_match_button")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "New Match", modifier = Modifier.size(14.dp))
+                    Text("Room", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+
+        // 3. UNIFIED PLAYMAT VIEWPORT (~80% height — single CanvasGameBoard backed by single state)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(Color(0xFF070B14))
+                .testTag("tabletop_main_playmat_container")
+        ) {
+            Column(
                 modifier = Modifier
-                    .weight(if (isSidebarSplitDocked) 1.35f else 1f)
-                    .fillMaxHeight()
-                    .testTag("tabletop_arena_list"),
-                contentPadding = PaddingValues(vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Match Selector & Client System UI Header
-                item {
-                    Card(
+                // Optional 3D Grid / PXZ / Archetype Status Overlay Strip (compact, non-duplicated)
+                if (is3dGridOverlay || activeFormatBlueprint?.id == "ULTIMATE_TCG_WIP" || activeFormatBlueprint?.mechanicModules?.isNotEmpty() == true) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(18.dp)
-                            ),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(RadiantGold.copy(alpha = 0.12f))
+                            .border(1.dp, RadiantGold.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "CLIENT SYSTEM UI: ${uiProfile.hudBadgeLabel} (${uiProfile.boardLayoutType})",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = currentMatch?.title ?: uiProfile.systemTitle,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Button(
-                                    onClick = { showNewMatchDialog = true },
-                                    modifier = Modifier.testTag("new_arena_match_button"),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "New Arena Match",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("New Arena")
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        onRequestConfirmOpenClientWindow(effectiveBaseId, currentMatch?.id)
-                                    },
-                                    modifier = Modifier
-                                        .weight(1.2f)
-                                        .testTag("open_arena_client_window_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DesktopWindows,
-                                        contentDescription = "Open Client System in Separate Window",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Separate Window",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-
-                                OutlinedButton(
-                                    onClick = { isSidebarSplitDocked = !isSidebarSplitDocked },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("toggle_arena_sidebar_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.VerticalSplit,
-                                        contentDescription = "Toggle Docked Sidebar Log",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (isSidebarSplitDocked) "Undock Log (${effectiveActionLogs.size})" else "Dock Sidebar (${effectiveActionLogs.size})",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { onBroadcastGameStartToDiscord(currentMatch) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("arena_discord_broadcast_start_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Campaign,
-                                        contentDescription = "Broadcast Game Start to Discord",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = "Discord Start ($discordDesignatedChannel)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                OutlinedButton(
-                                    onClick = { onBroadcastMatchWinnerToDiscord(currentMatch) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("arena_discord_broadcast_winner_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.EmojiEvents,
-                                        contentDescription = "Broadcast Match Winner to Discord",
-                                        tint = RadiantGold,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = if (currentMatch?.winnerName?.isNotBlank() == true) {
-                                            "Post Winner (${currentMatch.winnerName.take(10)})"
-                                        } else {
-                                            "Declare & Post Winner"
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = RadiantGold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            if (matches.size > 1) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(matches, key = { it.id }) { m ->
-                                        FilterChip(
-                                            selected = m.id == currentMatch?.id,
-                                            onClick = { onSelectMatch(m.id) },
-                                            label = { Text("${m.title} (${m.baseVariantId})") }
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (currentMatch != null) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Hub,
-                                            contentDescription = "Connected Clients",
-                                            tint = EmeraldReady,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Clients (${currentMatch.baseVariantId}): ${currentMatch.connectedClients.joinToString(", ")}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = EmeraldReady,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    OutlinedButton(
-                                        onClick = { onBridgeClientsIntoMatch(currentMatch) },
-                                        modifier = Modifier.testTag("bridge_clients_button"),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Refresh,
-                                            contentDescription = "Sync Clients",
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Sync Clients", style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Dynamic Animated Visual Health Bars synced from Firestore Game State
-                item {
-                    AnimatedSyncedHealthBarCard(
-                        syncState = realtimeGameSyncState,
-                        fallbackHostLife = currentMatch?.hostLife ?: activeBaseSpec.startingLife,
-                        fallbackOpponentLife = currentMatch?.opponentLife ?: activeBaseSpec.startingLife,
-                        onQuickAdjustLife = onAdjustSyncedLifePoints
-                    )
-                }
-
-                // Real-Time 2-Client Firestore Life Points & Board State Sync Manager Console
-                item {
-                    RealtimeGameStateSyncPanel(
-                        syncState = realtimeGameSyncState,
-                        onSelectSeat = onSelectSyncSeat,
-                        onJoinMatchById = onJoinSyncMatchById,
-                        onAdjustLifePoints = onAdjustSyncedLifePoints,
-                        onSetLifePointsExact = onSetSyncedLifePointsExact,
-                        onDeploySyncedCardForActiveSeat = onDeploySyncedCardForActiveSeat,
-                        onToggleZoneOrientation = onToggleSyncedZoneOrientation,
-                        onRemoveZonePlacement = onRemoveSyncedZonePlacement,
-                        onResetSyncedState = onResetSyncedLifeAndBoard
-                    )
-                }
-
-                // Persistent Scrollable Firestore Game Event Log (/matches/{matchId}/events)
-                item {
-                    val persistentEvents = (persistentEventsState as? UiState.Success)?.data.orEmpty()
-                    val persistentError = (persistentEventsState as? UiState.Error)?.message
-                    val quickCardName = playerHand.firstOrNull()?.name ?: "Ace Construct"
-                    val quickLpStep = if (activeBaseSpec.startingLife >= 1000L) 500L else 5L
-                    PersistentGameEventLogCard(
-                        matchId = realtimeGameSyncState.matchId.ifBlank { currentMatch?.id.orEmpty() },
-                        events = persistentEvents,
-                        isFirestoreConnected = realtimeGameSyncState.isAttached || currentMatch != null,
-                        errorMessage = persistentError,
-                        sampleCardName = quickCardName,
-                        defaultLifeDeltaStep = quickLpStep,
-                        onLogQuickCardPlay = onLogQuickCardPlay,
-                        onLogQuickLifeReduction = onLogQuickLifeReduction,
-                        onLogCustomEvent = onLogCustomGameEvent
-                    )
-                }
-
-                // Live In-Game Ruleset Parameters & Game-State Variables Debug HUD Panel
-                item {
-                    val hudHostUnits = currentMatch?.hostBoardCards?.map {
-                        CardTemplate.fromBoardDescriptor(it, currentMatch.baseVariantId)
-                    } ?: playerHand.take(2)
-                    val hudOppUnits = currentMatch?.opponentBoardCards?.map {
-                        CardTemplate.fromBoardDescriptor(it, currentMatch.baseVariantId)
-                    } ?: playerHand.drop(2).take(1)
-
-                    InGameDebugHudPanel(
-                        baseSpec = activeBaseSpec,
-                        activeCustomVariant = activeCustomVariant,
-                        uiProfile = uiProfile,
-                        activeClientNode = activeClientNode,
-                        engineState = gameEngineState,
-                        currentMatch = currentMatch,
-                        syncedBoardState = syncedBoardState,
-                        handCards = playerHand,
-                        hostUnits = hudHostUnits,
-                        opponentUnits = hudOppUnits,
-                        onStepPhase = { onStepGameEnginePhase(currentMatch) },
-                        onQueueCardEffect = { card, effectType ->
-                            onQueueCardEffect(card, effectType, currentMatch)
-                        },
-                        onResolveNextEffect = { onResolveNextEffect(currentMatch) },
-                        onResolveAllEffects = { onResolveAllEffects(currentMatch) }
-                    )
-                }
-
-                if (currentMatch == null) {
-                    // Responsive 2-Player Canvas GameBoard (Touch Drag-and-Drop + Firestore Sync)
-                    item {
-                        CanvasGameBoard(
-                            uiProfile = uiProfile,
-                            hostName = "Commander (You)",
-                            opponentName = uiProfile.clientDisplayName,
-                            hostLife = activeBaseSpec.startingLife,
-                            opponentLife = activeBaseSpec.startingLife,
-                            hostUnits = playerHand.take(2),
-                            opponentUnits = playerHand.drop(2).take(1),
-                            handCards = playerHand,
-                            turnNumber = 1L,
-                            activePhase = fallbackPhase,
-                            syncedBoardState = syncedBoardState,
-                            onDeployCardFromHand = { card, targetZone ->
-                                fallbackActionLogs.add(
-                                    "MOVE_HISTORY [Turn 1 • $fallbackPhase]: Player 1 moved '${card.name}' to Field [$targetZone] (${card.attack21}/${card.defense21})"
-                                )
-                            },
-                            onMoveCardBetweenZones = { card, fromZone, toZone ->
-                                fallbackActionLogs.add(
-                                    "MOVE_HISTORY [Turn 1 • $fallbackPhase]: Player 1 moved '${card.name}' from [$fromZone] to Field [$toZone]"
-                                )
-                            },
-                            onAttackOpponentZone = { attacker, targetZone, defender ->
-                                fallbackActionLogs.add(
-                                    "MSG_DAMAGE [Turn 1 • BP]: '${attacker.name}' (${attacker.attack} ATK) attacked P2 [$targetZone] (${defender?.name ?: "Direct"})!"
-                                )
-                            },
-                            onDrawCardRequest = {
-                                onDrawCard(effectiveBaseId, null)
-                                fallbackActionLogs.add("MSG_DRAW [Turn 1 • $fallbackPhase]: Drew card from P1 Deck Stack")
-                            },
-                            onBroadcastBoardState = { placements, eventType, eventSummary ->
-                                onBroadcastBoardState(null, placements, eventType, eventSummary)
-                                fallbackActionLogs.add("MOVE_HISTORY [Turn 1 • $eventType]: $eventSummary")
-                            },
-                            onTriggerPeerClientSyncMove = { placements ->
-                                onTriggerPeerClientSyncMove(null, placements)
-                                fallbackActionLogs.add("MOVE_HISTORY [Turn 1]: Player 2 (Peer Client #2) moved card to Field via Firebase Firestore")
-                            }
-                        )
-                    }
-                    item {
-                        ComposeGameBoardLayout(
-                            uiProfile = uiProfile,
-                            engineState = gameEngineState,
-                            handCards = playerHand,
-                            hostUnits = playerHand.take(2),
-                            opponentUnits = playerHand.drop(2).take(1),
-                            activeCustomVariant = activeCustomVariant,
-                            onDrawFromDeckPlaceholder = {
-                                onDrawCard(effectiveBaseId, null)
-                                fallbackActionLogs.add(
-                                    "MSG_DRAW [Turn ${gameEngineState.turnNumber} • ${gameEngineState.currentPhase.code}]: Player 1 drew card from Deck Placeholder to Hand"
-                                )
-                            },
-                            onDeployCardToActiveZone = { card, targetZone ->
-                                onAdjustResources(-card.cost.toLong().coerceAtLeast(1L), null)
-                                fallbackActionLogs.add(
-                                    "MOVE_HISTORY [Turn ${gameEngineState.turnNumber} • ${gameEngineState.currentPhase.code}]: Player 1 moved '${card.name}' from Hand Placeholder to Active Zone [$targetZone]"
-                                )
-                            },
-                            onQueueCardEffectFromZone = { card ->
-                                onQueueCardEffect(card, null, null)
-                                fallbackActionLogs.add(
-                                    "MSG_CHAINING [Turn ${gameEngineState.turnNumber} • ${gameEngineState.currentPhase.code}]: Player 1 queued effect of '${card.name}' from Compose GameBoard"
-                                )
-                            },
-                            onStepPhase = {
-                                onStepGameEnginePhase(null)
-                                fallbackPhase = gameEngineState.currentPhase.nextPhase().code
-                            },
-                            onSelectPhase = { phase ->
-                                onSelectGameEnginePhase(phase, null)
-                                fallbackPhase = phase.code
-                                fallbackActionLogs.add(
-                                    "MSG_NEW_PHASE [Turn ${gameEngineState.turnNumber}]: TurnPhaseIndicator transitioned -> ${phase.displayName} (${phase.code})"
-                                )
-                            },
-                            onSelectClientPhaseCode = { code ->
-                                fallbackPhase = code
-                                fallbackActionLogs.add(
-                                    "MSG_NEW_PHASE [Turn ${gameEngineState.turnNumber}]: Client sub-phase selected -> $code"
-                                )
-                            },
-                            onSpendResource = { amount ->
-                                onAdjustResources(-amount, null)
-                                fallbackActionLogs.add(
-                                    "RESOURCE_POOL [Turn ${gameEngineState.turnNumber}]: Spent $amount ${activeBaseSpec.resourceName}"
-                                )
-                            },
-                            onGainResource = { amount ->
-                                onAdjustResources(amount, null)
-                                fallbackActionLogs.add(
-                                    "RESOURCE_POOL [Turn ${gameEngineState.turnNumber}]: Gained +$amount ${activeBaseSpec.resourceName}"
-                                )
-                            },
-                            onRefillResources = {
-                                onRefillResources(null)
-                                fallbackActionLogs.add(
-                                    "RESOURCE_REFILL [Turn ${gameEngineState.turnNumber}]: Refilled ${activeBaseSpec.resourceName} pool"
-                                )
-                            },
-                            onExpandMaxResourceCap = {
-                                onExpandMaxResources(null)
-                                fallbackActionLogs.add(
-                                    "RESOURCE_CAP [Turn ${gameEngineState.turnNumber}]: Expanded ${activeBaseSpec.resourceName} capacity +1"
-                                )
-                            },
-                            onSetResourceExact = { exact ->
-                                onSetResourcesExact(exact, null)
-                            }
-                        )
-                    }
-                    item {
-                        GameEngineTurnAndEffectPanel(
-                            engineState = gameEngineState,
-                            uiProfile = uiProfile,
-                            handCards = playerHand,
-                            onStepPhase = {
-                                onStepGameEnginePhase(null)
-                                val nextPhase = gameEngineState.currentPhase.nextPhase()
-                                fallbackPhase = nextPhase.code
-                                fallbackActionLogs.add(
-                                    "MSG_NEW_PHASE [Turn ${gameEngineState.turnNumber}]: GameEngine stepped -> ${nextPhase.displayName} (${nextPhase.code})"
-                                )
-                            },
-                            onSelectPhase = { phase ->
-                                onSelectGameEnginePhase(phase, null)
-                                fallbackPhase = phase.code
-                                fallbackActionLogs.add(
-                                    "MSG_NEW_PHASE [Turn ${gameEngineState.turnNumber}]: GameEngine transitioned -> ${phase.displayName} (${phase.code})"
-                                )
-                            },
-                            onQueueEffect = { card, effectType ->
-                                onQueueCardEffect(card, effectType, null)
-                                fallbackActionLogs.add(
-                                    "MSG_CHAINING [Turn ${gameEngineState.turnNumber} • ${gameEngineState.currentPhase.code}]: Queued '${card.name}' (${effectType?.displayTitle ?: "Auto Effect"}) on Stack"
-                                )
-                            },
-                            onResolveNextEffect = {
-                                onResolveNextEffect(null)
-                                fallbackActionLogs.add(
-                                    "MSG_CHAIN_SOLVED [Turn ${gameEngineState.turnNumber} • ${gameEngineState.currentPhase.code}]: Resolved top Chain Link / Stack item"
-                                )
-                            },
-                            onResolveAllEffects = {
-                                onResolveAllEffects(null)
-                                fallbackActionLogs.add(
-                                    "MSG_CHAIN_END [Turn ${gameEngineState.turnNumber} • ${gameEngineState.currentPhase.code}]: Resolved full LIFO Chain / Stack"
-                                )
-                            }
-                        )
-                    }
-                    item {
-                        D3BoardStateVisualizer(
-                            uiProfile = uiProfile,
-                            hostUnits = playerHand.take(2),
-                            opponentUnits = playerHand.drop(2).take(1),
-                            handCards = playerHand,
-                            turnNumber = 1L,
-                            activePhase = fallbackPhase,
-                            onQuickDeployFromVisualizer = {
-                                onDrawCard(effectiveBaseId, null)
-                                fallbackActionLogs.add("MSG_DRAW [Turn 1 • $fallbackPhase]: Drew card from Deck Stack")
-                            }
-                        )
-                    }
-                    if (!isSidebarSplitDocked) {
-                        item {
-                            GameplayActionSidebarLog(
-                                uiProfile = uiProfile,
-                                rawActionLogs = effectiveActionLogs,
-                                turnNumber = effectiveTurn,
-                                activePhase = effectivePhase,
-                                isDockedSidebar = false,
-                                syncedBoardState = syncedBoardState,
-                                onToggleDockedMode = { isSidebarSplitDocked = true },
-                                onSelectPhaseFromSidebar = { phaseCode ->
-                                    fallbackActionLogs.add(
-                                        "MSG_NEW_PHASE [Turn 1]: Shifted phase $fallbackPhase -> $phaseCode"
-                                    )
-                                    fallbackPhase = phaseCode
-                                },
-                                onRecordSyncedMoveFromSidebar = { moveLine ->
-                                    fallbackActionLogs.add(moveLine)
-                                    onBroadcastBoardState(
-                                        null,
-                                        syncedBoardState?.zonePlacements.orEmpty(),
-                                        "MOVE_HISTORY",
-                                        moveLine
-                                    )
-                                }
-                            )
-                        }
-                    }
-                } else {
-                    val opponentUnits = currentMatch.opponentBoardCards.map {
-                        CardTemplate.fromBoardDescriptor(it, currentMatch.baseVariantId)
-                    }
-                    val hostUnits = currentMatch.hostBoardCards.map {
-                        CardTemplate.fromBoardDescriptor(it, currentMatch.baseVariantId)
-                    }
-
-                    // 0A. Responsive 2-Player Canvas GameBoard (Touch Drag-and-Drop Card Movement + Real-Time Firestore Sync)
-                    item {
-                        CanvasGameBoard(
-                            uiProfile = uiProfile,
-                            hostName = currentMatch.hostName,
-                            opponentName = currentMatch.connectedClients.firstOrNull() ?: uiProfile.clientDisplayName,
-                            hostLife = currentMatch.hostLife,
-                            opponentLife = currentMatch.opponentLife,
-                            hostUnits = hostUnits,
-                            opponentUnits = opponentUnits,
-                            handCards = playerHand,
-                            turnNumber = currentMatch.turnNumber,
-                            activePhase = currentMatch.activePhase,
-                            syncedBoardState = syncedBoardState,
-                            onDeployCardFromHand = { card, targetZone ->
-                                onDeployCard(currentMatch, card)
-                                onRecordMatchActionLog(
-                                    currentMatch,
-                                    "MOVE_HISTORY [Turn ${currentMatch.turnNumber} • ${currentMatch.activePhase}]: Player 1 (${currentMatch.hostName}) moved '${card.name}' to Field [$targetZone]"
-                                )
-                            },
-                            onMoveCardBetweenZones = { card, fromZone, toZone ->
-                                onRecordMatchActionLog(
-                                    currentMatch,
-                                    "MOVE_HISTORY [Turn ${currentMatch.turnNumber} • ${currentMatch.activePhase}]: Player 1 (${currentMatch.hostName}) moved '${card.name}' from [$fromZone] to Field [$toZone]"
-                                )
-                            },
-                            onAttackOpponentZone = { attacker, targetZone, defender ->
-                                onRecordMatchActionLog(
-                                    currentMatch,
-                                    "MSG_DAMAGE [Turn ${currentMatch.turnNumber} • BP]: '${attacker.name}' (${attacker.attack} ATK) attacked [$targetZone] (${defender?.name ?: "Direct"})"
-                                )
-                            },
-                            onDrawCardRequest = {
-                                onDrawCard(currentMatch.baseVariantId, currentMatch)
-                            },
-                            onBroadcastBoardState = { placements, eventType, eventSummary ->
-                                onBroadcastBoardState(currentMatch, placements, eventType, eventSummary)
-                            },
-                            onTriggerPeerClientSyncMove = { placements ->
-                                onTriggerPeerClientSyncMove(currentMatch, placements)
-                            }
-                        )
-                    }
-
-                    // 0A-1. Compose UI GameBoard Layout (Placeholders for Player's Hand, Deck & Active Zones + Visual Resource Counter)
-                    item {
-                        ComposeGameBoardLayout(
-                            uiProfile = uiProfile,
-                            engineState = gameEngineState,
-                            handCards = playerHand,
-                            hostUnits = hostUnits,
-                            opponentUnits = opponentUnits,
-                            activeCustomVariant = activeCustomVariant,
-                            overrideAvailableResources = currentMatch.hostResources,
-                            overrideMaxResources = currentMatch.hostMaxResources,
-                            overrideOpponentResources = currentMatch.opponentResources,
-                            onDrawFromDeckPlaceholder = {
-                                onDrawCard(currentMatch.baseVariantId, currentMatch)
-                            },
-                            onDeployCardToActiveZone = { card, targetZone ->
-                                onDeployCard(currentMatch, card)
-                                onRecordMatchActionLog(
-                                    currentMatch,
-                                    "MOVE_HISTORY [Turn ${currentMatch.turnNumber} • ${currentMatch.activePhase}]: Player 1 (${currentMatch.hostName}) moved '${card.name}' from Hand to Active Zone [$targetZone]"
-                                )
-                            },
-                            onQueueCardEffectFromZone = { card ->
-                                onQueueCardEffect(card, null, currentMatch)
-                            },
-                            onStepPhase = {
-                                onStepGameEnginePhase(currentMatch)
-                            },
-                            onSelectPhase = { phase ->
-                                onSelectGameEnginePhase(phase, currentMatch)
-                            },
-                            onSelectClientPhaseCode = { code ->
-                                onChangePhase(currentMatch, code)
-                            },
-                            onSpendResource = { amount ->
-                                onAdjustResources(-amount, currentMatch)
-                            },
-                            onGainResource = { amount ->
-                                onAdjustResources(amount, currentMatch)
-                            },
-                            onRefillResources = {
-                                onRefillResources(currentMatch)
-                            },
-                            onExpandMaxResourceCap = {
-                                onExpandMaxResources(currentMatch)
-                            },
-                            onSetResourceExact = { exact ->
-                                onSetResourcesExact(exact, currentMatch)
-                            }
-                        )
-                    }
-
-                    // 0A-2. Core GameEngine Turn State Machine & LIFO Card Effect Resolution Console
-                    item {
-                        GameEngineTurnAndEffectPanel(
-                            engineState = gameEngineState,
-                            uiProfile = uiProfile,
-                            handCards = playerHand,
-                            onStepPhase = { onStepGameEnginePhase(currentMatch) },
-                            onSelectPhase = { phase -> onSelectGameEnginePhase(phase, currentMatch) },
-                            onQueueEffect = { card, effectType ->
-                                onQueueCardEffect(card, effectType, currentMatch)
-                            },
-                            onResolveNextEffect = { onResolveNextEffect(currentMatch) },
-                            onResolveAllEffects = { onResolveAllEffects(currentMatch) }
-                        )
-                    }
-
-                    // 0B. D3.js Based Live Board State & Card Stack Visualizer
-                    item {
-                        D3BoardStateVisualizer(
-                            uiProfile = uiProfile,
-                            hostUnits = hostUnits,
-                            opponentUnits = opponentUnits,
-                            handCards = playerHand,
-                            turnNumber = currentMatch.turnNumber,
-                            activePhase = currentMatch.activePhase,
-                            onQuickDeployFromVisualizer = {
-                                onDrawCard(currentMatch.baseVariantId, currentMatch)
-                            }
-                        )
-                    }
-
-                    // 1. Opponent / Connected Client Zone (System-Specific Layout)
-                    item {
-                        ArenaPlayerBoardZone(
-                            title = "PEER CLIENT: ${currentMatch.connectedClients.firstOrNull() ?: uiProfile.clientDisplayName}",
-                            zoneSubtitle = uiProfile.fieldSlotsTopLabel,
-                            lifeTotal = currentMatch.opponentLife,
-                            lifeLabel = uiProfile.lifeLabel,
-                            resources = currentMatch.opponentResources,
-                            maxResources = currentMatch.hostMaxResources,
-                            resourceName = uiProfile.resourceLabel,
-                            uiProfile = uiProfile,
-                            units = opponentUnits,
-                            isOpponent = true
-                        )
-                    }
-
-                    // 2. Turn & Interactive Client-System Phase Strip (Records Phase Changes in Real Time)
-                    item {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(16.dp)
-                                ),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = if (currentMatch.status == "FINISHED") {
-                                                "MATCH FINISHED • WINNER: ${currentMatch.winnerName}"
-                                            } else {
-                                                "TURN ${currentMatch.turnNumber} • PHASE: ${currentMatch.activePhase} (${uiProfile.boardLayoutType})"
-                                            },
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = if (currentMatch.status == "FINISHED") RadiantGold else MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "Tap any Phase Pill below to switch phases & record in the live Sidebar Log",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Interactive Client-System Phase Strip Pills
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    uiProfile.phaseStripCodes.forEach { phaseCode ->
-                                        val isCurrentPhase = phaseCode.equals(currentMatch.activePhase, ignoreCase = true) ||
-                                            (currentMatch.activePhase == "MAIN" && (phaseCode == "MP1" || phaseCode == "MAIN-1" || phaseCode == "DEPLOY" || phaseCode == "MATERIALIZE"))
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(
-                                                    if (isCurrentPhase) MaterialTheme.colorScheme.primary
-                                                    else MaterialTheme.colorScheme.surface
-                                                )
-                                                .clickable {
-                                                    onChangePhase(currentMatch, phaseCode)
-                                                }
-                                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                                                .testTag("arena_phase_chip_$phaseCode")
-                                        ) {
-                                            Text(
-                                                text = phaseCode,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (isCurrentPhase) MaterialTheme.colorScheme.onPrimary
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = { onDrawCard(currentMatch.baseVariantId, currentMatch) },
-                                        enabled = currentMatch.status != "FINISHED",
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("draw_card_button")
-                                    ) {
-                                        Text("Draw (${activeBaseSpec.zones.first()})")
-                                    }
-                                    Button(
-                                        onClick = { onExecuteCombatAndAdvanceTurn(currentMatch) },
-                                        enabled = currentMatch.status != "FINISHED",
-                                        modifier = Modifier
-                                            .weight(1.3f)
-                                            .testTag("combat_end_turn_button"),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.secondary,
-                                            contentColor = MaterialTheme.colorScheme.onSecondary
-                                        )
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Execute Combat and Sync Turn",
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(uiProfile.combatVerb, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 3. Host Player Battlefield Zone (System-Specific Slots)
-                    item {
-                        ArenaPlayerBoardZone(
-                            title = "COMMANDER: ${currentMatch.hostName} (YOU)",
-                            zoneSubtitle = uiProfile.fieldSlotsBottomLabel,
-                            lifeTotal = currentMatch.hostLife,
-                            lifeLabel = uiProfile.lifeLabel,
-                            resources = currentMatch.hostResources,
-                            maxResources = currentMatch.hostMaxResources,
-                            resourceName = uiProfile.resourceLabel,
-                            uiProfile = uiProfile,
-                            units = hostUnits,
-                            isOpponent = false
-                        )
-                    }
-
-                    // 4. Interactive Player Hand (Tap Card to Deploy/Summon)
-                    item {
                         Text(
-                            text = "Your Hand — Tap a Card to ${uiProfile.deployVerb} (${currentMatch.hostResources}/${currentMatch.hostMaxResources} ${uiProfile.resourceLabel})",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground
+                            text = if (is3dGridOverlay) {
+                                "3D Tactical Grid Overlay ON • PXZ Frontline $pxzFrontlineCount/5 • XP $pxzXpGaugePct% • Tier $activeMaterialTier"
+                            } else {
+                                "PXZ Frontline $pxzFrontlineCount/5 • XP $pxzXpGaugePct%${if (crossHitActive) " • CROSS HIT!" else ""} • Intent: $bossIntentText"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = RadiantGold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(playerHand) { card ->
-                                val canAfford = currentMatch.hostResources >= card.cost && currentMatch.status != "FINISHED"
-                                HandPlayableCard(
-                                    card = card,
-                                    deployVerb = uiProfile.deployVerb,
-                                    resourceName = currentMatch.resourceName,
-                                    canAfford = canAfford,
-                                    onDeploy = { onDeployCard(currentMatch, card) }
-                                )
-                            }
-                        }
                     }
+                }
 
-                    // 5. Scrollable Real-Time Gameplay Action Sidebar Log (Inline when undocked)
-                    if (!isSidebarSplitDocked) {
-                        item {
-                            GameplayActionSidebarLog(
-                                uiProfile = uiProfile,
-                                rawActionLogs = effectiveActionLogs,
-                                turnNumber = effectiveTurn,
-                                activePhase = effectivePhase,
-                                isDockedSidebar = false,
-                                syncedBoardState = syncedBoardState,
-                                onToggleDockedMode = { isSidebarSplitDocked = true },
-                                onSelectPhaseFromSidebar = { phaseCode ->
-                                    onChangePhase(currentMatch, phaseCode)
-                                },
-                                onRecordSyncedMoveFromSidebar = { moveLine ->
-                                    onRecordMatchActionLog(currentMatch, moveLine)
-                                    onBroadcastBoardState(
-                                        currentMatch,
-                                        syncedBoardState?.zonePlacements.orEmpty(),
-                                        "MOVE_HISTORY",
-                                        moveLine
-                                    )
-                                }
-                            )
+                CanvasGameBoard(
+                    uiProfile = uiProfile,
+                    hostName = currentMatch?.hostName ?: "Commander",
+                    opponentName = currentMatch?.connectedClients?.firstOrNull() ?: "Peer Client",
+                    hostLife = effectiveHostLife,
+                    opponentLife = effectiveOpponentLife,
+                    hostUnits = hostUnits,
+                    opponentUnits = opponentUnits,
+                    handCards = playerHand,
+                    turnNumber = gameEngineState.turnNumber,
+                    activePhase = gameEngineState.currentPhase.displayName,
+                    syncedBoardState = syncedBoardState,
+                    onDeployCardFromHand = { card, zoneId ->
+                        if (currentMatch != null) {
+                            onDeployCard(currentMatch, card)
+                        }
+                        onLogQuickCardPlay("${card.name} -> $zoneId")
+                    },
+                    onMoveCardBetweenZones = { card, fromZone, toZone ->
+                        if (currentMatch != null) {
+                            onRecordMatchActionLog(currentMatch, "Moved ${card.name}: $fromZone -> $toZone")
+                        }
+                    },
+                    onAttackOpponentZone = { attacker, targetZone, _ ->
+                        if (currentMatch != null) {
+                            onExecuteCombatAndAdvanceTurn(currentMatch)
+                        }
+                        onLogCustomGameEvent("${attacker.name} declared attack on $targetZone")
+                    },
+                    onDrawCardRequest = { onDrawCard(effectiveBaseId, currentMatch) },
+                    onBroadcastBoardState = { placements, note, actor ->
+                        onBroadcastBoardState(currentMatch, placements, note, actor)
+                    }
+                )
+            }
+        }
+
+        // 4. Fanned Hand Dock with Card Zoom & Holographic Foil Sheen
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .testTag("tabletop_fanned_hand_dock"),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Hand Dock (${playerHand.size}) • Tap card to zoom/play",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = { onDrawCard(effectiveBaseId, currentMatch) },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.testTag("hand_dock_draw_button")
+                    ) {
+                        Text("Draw", style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (currentMatch != null) {
+                        Button(
+                            onClick = { onExecuteCombatAndAdvanceTurn(currentMatch) },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.testTag("hand_dock_combat_button")
+                        ) {
+                            Text("Combat / End", style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
             }
 
-            // Right Column: Docked Scrollable Real-Time Gameplay Action Sidebar Log
-            if (isSidebarSplitDocked) {
-                GameplayActionSidebarLog(
-                    uiProfile = uiProfile,
-                    rawActionLogs = effectiveActionLogs,
-                    turnNumber = effectiveTurn,
-                    activePhase = effectivePhase,
-                    isDockedSidebar = true,
-                    syncedBoardState = syncedBoardState,
-                    onToggleDockedMode = { isSidebarSplitDocked = false },
-                    onSelectPhaseFromSidebar = { phaseCode ->
-                        if (currentMatch != null) {
-                            onChangePhase(currentMatch, phaseCode)
-                        } else {
-                            fallbackActionLogs.add(
-                                "MSG_NEW_PHASE [Turn 1]: Shifted phase $fallbackPhase -> $phaseCode"
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(vertical = 2.dp)
+            ) {
+                items(playerHand.indices.toList(), key = { idx -> "${playerHand[idx].id}_$idx" }) { idx ->
+                    val card = playerHand[idx]
+                    val fanTilt = ((idx - (playerHand.size - 1) / 2f) * 2.5f).coerceIn(-8f, 8f)
+                    Box(
+                        modifier = Modifier
+                            .width(126.dp)
+                            .graphicsLayer { rotationZ = fanTilt }
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        Color(0xFF141B2D),
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                        Color(0xFF1A142E)
+                                    )
+                                )
                             )
-                            fallbackPhase = phaseCode
+                            .border(1.2.dp, RadiantGold.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                            .clickable { zoomedHandCard = card }
+                            .padding(8.dp)
+                            .testTag("hand_card_${card.id}")
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = card.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${card.cardType} • Cost ${card.cost}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = RadiantGold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "ATK ${card.attack} / DEF ${card.defense}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFFBAE6FD)
+                            )
                         }
-                    },
-                    onRecordSyncedMoveFromSidebar = { moveLine ->
-                        if (currentMatch != null) {
-                            onRecordMatchActionLog(currentMatch, moveLine)
-                            onBroadcastBoardState(
-                                currentMatch,
-                                syncedBoardState?.zonePlacements.orEmpty(),
-                                "MOVE_HISTORY",
-                                moveLine
+                    }
+                }
+            }
+        }
+    }
+
+    // Card Zoom Preview Dialog with Foil Sheen
+    zoomedHandCard?.let { card ->
+        AlertDialog(
+            onDismissRequest = { zoomedHandCard = null },
+            title = { Text(card.name, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        Color(0xFF0E172A),
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                                        RadiantGold.copy(alpha = 0.22f)
+                                    )
+                                )
                             )
+                            .border(1.5.dp, RadiantGold, RoundedCornerShape(14.dp))
+                            .padding(14.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(card.cardType, style = MaterialTheme.typography.labelSmall, color = RadiantGold, fontWeight = FontWeight.Bold)
+                            Text("ATK ${card.attack} / DEF ${card.defense} • Cost ${card.cost}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
+                            Text("V2 Wire: ${card.toV2BoardDescriptor()}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                            Text(card.abilityText, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (currentMatch != null) {
+                            onDeployCard(currentMatch, card)
+                        }
+                        onLogQuickCardPlay(card.name)
+                        zoomedHandCard = null
+                    }
+                ) {
+                    Text("Deploy to Mat")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            onQueueCardEffect(card, null, currentMatch)
+                            zoomedHandCard = null
+                        }
+                    ) {
+                        Text("Queue Chain")
+                    }
+                    TextButton(onClick = { zoomedHandCard = null }) {
+                        Text("Close")
+                    }
+                }
+            }
+        )
+    }
+
+    // Slide-Over Drawers via ModalBottomSheet
+    openDrawer?.let { drawer ->
+        ModalBottomSheet(onDismissRequest = { openDrawer = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 540.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(drawer.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+                when (drawer) {
+                    TabletopDrawer.ARENA_HOSTING -> {
+                        Text("Arena Hosting Mode:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Native Universe", "Off-World Morphing Grid", "Out-of-Game Card Invocation").forEach { mode ->
+                                FilterChip(
+                                    selected = arenaHostingMode == mode,
+                                    onClick = { arenaHostingMode = mode },
+                                    label = { Text(mode, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("3D Grid Overlay (on top of 2D Mat)", style = MaterialTheme.typography.bodySmall)
+                            Switch(checked = is3dGridOverlay, onCheckedChange = { is3dGridOverlay = it })
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Vanguard Side-Project Formats (Strictly Opt-In)", style = MaterialTheme.typography.bodySmall)
+                            Switch(checked = optInSideProjectFormats, onCheckedChange = { optInSideProjectFormats = it })
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Outsider Vitality Mode (replaces Magic/Force Pulse)", style = MaterialTheme.typography.bodySmall)
+                            Switch(checked = outsiderVitalityMode, onCheckedChange = { outsiderVitalityMode = it })
+                        }
+                        HorizontalDivider()
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onRequestConfirmOpenClientWindow(effectiveBaseId, currentMatch?.id) }) {
+                                Icon(Icons.Default.DesktopWindows, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Separate Window")
+                            }
+                            if (currentMatch != null) {
+                                OutlinedButton(onClick = { onBridgeClientsIntoMatch(currentMatch) }) {
+                                    Text("Bridge Clients")
+                                }
+                            }
+                        }
+                    }
+
+                    TabletopDrawer.EVENT_LOG -> {
+                        val events = (persistentEventsState as? UiState.Success)?.data.orEmpty()
+                        PersistentGameEventLogCard(
+                            matchId = currentMatch?.id ?: realtimeGameSyncState.matchId.ifBlank { "local_tabletop" },
+                            events = events,
+                            isFirestoreConnected = currentMatch != null || realtimeGameSyncState.isAttached,
+                            onLogQuickCardPlay = onLogQuickCardPlay,
+                            onLogQuickLifeReduction = onLogQuickLifeReduction,
+                            onLogCustomEvent = onLogCustomGameEvent
+                        )
+                    }
+
+                    TabletopDrawer.CHAIN_STACK -> {
+                        Text(
+                            text = "LIFO Stack / Chain Depth: ${gameEngineState.effectStack.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = RadiantGold
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onResolveNextEffect(currentMatch) }) { Text("Resolve Top") }
+                            OutlinedButton(onClick = { onResolveAllEffects(currentMatch) }) { Text("Resolve All") }
+                        }
+                        if (gameEngineState.effectStack.isEmpty()) {
+                            Text("Chain is currently empty. Tap a card in the Hand Dock to queue an effect.", style = MaterialTheme.typography.bodySmall)
                         } else {
-                            fallbackActionLogs.add(moveLine)
-                            onBroadcastBoardState(
-                                null,
-                                syncedBoardState?.zonePlacements.orEmpty(),
-                                "MOVE_HISTORY",
-                                moveLine
+                            gameEngineState.effectStack.reversed().forEachIndexed { idx, item ->
+                                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text("Link #${gameEngineState.effectStack.size - idx}: ${item.sourceCard.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                        Text("${item.effectType.name} • ${item.targetDescription}", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    TabletopDrawer.CALC_21 -> {
+                        var left21 by remember { mutableStateOf("100000000000000000000") }
+                        var right21 by remember { mutableStateOf("23456789012345678901") }
+                        var op by remember { mutableStateOf("ADD_21") }
+                        val result21 = remember(left21, right21, op) {
+                            BigInt21Engine.evaluateFunction21(op, left21, right21)
+                        }
+                        OutlinedTextField(value = left21, onValueChange = { left21 = it }, label = { Text("Register A (up to 21 digits)") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = right21, onValueChange = { right21 = it }, label = { Text("Register B (up to 21 digits)") }, modifier = Modifier.fillMaxWidth())
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("ADD_21", "SUB_21", "MUL_21", "DIV_21").forEach { fn ->
+                                FilterChip(selected = op == fn, onClick = { op = fn }, label = { Text(fn) })
+                            }
+                        }
+                        Text(
+                            text = "Result: ${BigInt21Engine.formatWithCommas(result21)}",
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = EmeraldReady
+                        )
+                    }
+
+                    TabletopDrawer.SENSORS -> {
+                        Text("4 Planetary Sensor Indices & Material Tiers (1–8)", style = MaterialTheme.typography.labelMedium, color = RadiantGold)
+                        SensorBar("Magic Density", magicDensity) { magicDensity = it }
+                        SensorBar("Tech Index", techIndex) { techIndex = it }
+                        SensorBar("Arcane Interference", arcaneInterference) { arcaneInterference = it }
+                        SensorBar("Planar Stability", planarStability) { planarStability = it }
+                        Text("Active Material Tier: Tier $activeMaterialTier / 8", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            (1..8).forEach { tier ->
+                                FilterChip(
+                                    selected = activeMaterialTier == tier,
+                                    onClick = { activeMaterialTier = tier },
+                                    label = { Text("T$tier") }
+                                )
+                            }
+                        }
+                    }
+
+                    TabletopDrawer.VG_MECHANICS -> {
+                        Text("PXZ Frontline ($pxzFrontlineCount/5) • XP Gauge $pxzXpGaugePct% / 150%", fontWeight = FontWeight.Bold)
+                        LinearProgressIndicator(progress = { (pxzXpGaugePct / 150f).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(onClick = { pxzFrontlineCount = (pxzFrontlineCount % 5) + 1 }) { Text("Cycle Frontline ($pxzFrontlineCount)") }
+                            OutlinedButton(onClick = { pxzXpGaugePct = (pxzXpGaugePct + 25).coerceAtMost(150) }) { Text("+25% XP") }
+                            Button(onClick = { crossHitActive = !crossHitActive }) { Text(if (crossHitActive) "Cross Hit ON" else "Trigger Cross Hit") }
+                            OutlinedButton(onClick = { programAdvanceReady = !programAdvanceReady }) {
+                                Text(if (programAdvanceReady) "Program Advance READY" else "Program Advance Used")
+                            }
+                        }
+                        Text("Boss Intent Telegraph: $bossIntentText", style = MaterialTheme.typography.bodySmall, color = CrimsonAlert)
+                    }
+
+                    TabletopDrawer.SYNC_HUB -> {
+                        AnimatedSyncedHealthBarCard(
+                            syncState = realtimeGameSyncState,
+                            fallbackHostLife = effectiveHostLife,
+                            fallbackOpponentLife = effectiveOpponentLife,
+                            onQuickAdjustLife = onAdjustSyncedLifePoints
+                        )
+                        RealtimeGameStateSyncPanel(
+                            syncState = realtimeGameSyncState,
+                            onSelectSeat = onSelectSyncSeat,
+                            onJoinMatchById = onJoinSyncMatchById,
+                            onAdjustLifePoints = onAdjustSyncedLifePoints,
+                            onSetLifePointsExact = onSetSyncedLifePointsExact,
+                            onDeploySyncedCardForActiveSeat = onDeploySyncedCardForActiveSeat,
+                            onToggleZoneOrientation = onToggleSyncedZoneOrientation,
+                            onRemoveZonePlacement = onRemoveSyncedZonePlacement,
+                            onResetSyncedState = onResetSyncedLifeAndBoard
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onBroadcastGameStartToDiscord(currentMatch) }) {
+                                Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Discord Start ($discordDesignatedChannel)")
+                            }
+                            OutlinedButton(onClick = { onBroadcastMatchWinnerToDiscord(currentMatch) }) {
+                                Icon(Icons.Default.EmojiEvents, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Discord Winner")
+                            }
+                        }
+                    }
+
+                    TabletopDrawer.DUAL_CHAT -> {
+                        Text("Strict Dual-Channel Chat: IC messages feed Memorial Forge Archive; OOC Normal & Ruling Calls stay strictly separated.", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            ChatChannelMode.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = activeChatMode == mode,
+                                    onClick = { activeChatMode = mode },
+                                    label = { Text(mode.label, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                        chatFeed.filter { it.first == activeChatMode }.takeLast(8).forEach { (mode, who, body) ->
+                            Text(
+                                text = "[${mode.name}] $who: $body",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (mode == ChatChannelMode.IC_MEMORIAL) EmeraldReady else MaterialTheme.colorScheme.onSurface
                             )
                         }
-                    },
-                    modifier = Modifier
-                        .weight(0.95f)
-                        .fillMaxHeight()
-                )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = chatDraft,
+                                onValueChange = { chatDraft = it },
+                                placeholder = { Text("Write ${activeChatMode.label} message...") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = {
+                                    val clean = chatDraft.trim()
+                                    if (clean.isNotEmpty()) {
+                                        chatFeed.add(Triple(activeChatMode, "Commander", clean))
+                                        if (activeChatMode == ChatChannelMode.IC_MEMORIAL) {
+                                            onRecordIcMemorialEntry(clean)
+                                        }
+                                        chatDraft = ""
+                                    }
+                                }
+                            ) {
+                                Text("Send")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
     if (showNewMatchDialog) {
-        NewMatchDialog(
-            baseVariantName = activeBaseSpec.name,
-            onDismiss = { showNewMatchDialog = false },
-            onConfirm = { title ->
-                onLaunchMatch(title)
-                showNewMatchDialog = false
+        AlertDialog(
+            onDismissRequest = { showNewMatchDialog = false },
+            title = { Text("Launch Multi-Client Match Room") },
+            text = {
+                OutlinedTextField(
+                    value = newMatchTitle,
+                    onValueChange = { newMatchTitle = it },
+                    label = { Text("Match Room Title") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onLaunchMatch(newMatchTitle.trim().ifEmpty { "${uiProfile.hudBadgeLabel} Arena" })
+                        newMatchTitle = ""
+                        showNewMatchDialog = false
+                    }
+                ) {
+                    Text("Launch")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewMatchDialog = false }) { Text("Cancel") }
             }
         )
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ArenaPlayerBoardZone(
-    title: String,
-    zoneSubtitle: String,
-    lifeTotal: Long,
-    lifeLabel: String,
-    resources: Long,
-    maxResources: Long,
-    resourceName: String,
-    uiProfile: ClientSystemUiProfile,
-    units: List<CardTemplate>,
-    isOpponent: Boolean
+private fun DrawerChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
 ) {
-    val accent = if (isOpponent) CrimsonAlert else EmeraldReady
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(18.dp)),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = accent,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = zoneSubtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "Life Total",
-                            tint = CrimsonAlert,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "$lifeTotal $lifeLabel",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = resourceName,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "$resources/$maxResources $resourceName",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Client-System Specific Zone Slots (MMZ 1..5 / EXP 1..6 / SANCTUM / GRID / RIFT)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                uiProfile.fieldSlotCodes.forEachIndexed { idx, slotCode ->
-                    val unitInSlot = units.getOrNull(idx)
-                    Box(
-                        modifier = Modifier
-                            .width(104.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (unitInSlot != null) MaterialTheme.colorScheme.surfaceVariant
-                                else MaterialTheme.colorScheme.background
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (unitInSlot != null) RadiantGold.copy(alpha = 0.7f)
-                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .padding(8.dp)
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(
-                                text = slotCode,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (unitInSlot != null) {
-                                Text(
-                                    text = unitInSlot.name,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "${unitInSlot.attack}/${unitInSlot.defense}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = RadiantGold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            } else {
-                                Text(
-                                    text = "Empty Zone",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HandPlayableCard(
-    card: CardTemplate,
-    deployVerb: String,
-    resourceName: String,
-    canAfford: Boolean,
-    onDeploy: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .width(165.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .border(
-                width = if (canAfford) 1.5.dp else 1.dp,
-                color = if (canAfford) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                shape = RoundedCornerShape(14.dp)
-            )
-            .clickable(enabled = canAfford) { onDeploy() }
-            .testTag("hand_card_${card.id}"),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(
-                            color = if (canAfford) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "${card.cost}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Text(
-                    text = "${card.attack}/${card.defense}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = RadiantGold,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = card.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = card.abilityText,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                minLines = 2,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = if (canAfford) "$deployVerb (${card.cost} $resourceName)" else "NEED ${card.cost} $resourceName",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (canAfford) EmeraldReady else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun NewMatchDialog(
-    baseVariantName: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var title by remember { mutableStateOf("$baseVariantName Client Table") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Launch Multi-Client Arena") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Creates a live tabletop match locked to the active Base Variant ($baseVariantName) and bridges compatible connected clients.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Arena Title") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("arena_title_input")
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(title) },
-                modifier = Modifier.testTag("confirm_launch_arena_button")
-            ) {
-                Text("Launch")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp)) }
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GameEngineTurnAndEffectPanel(
-    engineState: GameEngineState,
-    uiProfile: ClientSystemUiProfile,
-    handCards: List<CardTemplate>,
-    onStepPhase: () -> Unit,
-    onSelectPhase: (TurnPhase) -> Unit,
-    onQueueEffect: (CardTemplate, CardEffectType?) -> Unit,
-    onResolveNextEffect: () -> Unit,
-    onResolveAllEffects: () -> Unit
-) {
-    val accent = Color(uiProfile.accentHex)
-    var selectedCardIdx by remember(handCards.size, engineState.baseVariantId) { mutableStateOf(0) }
-    var selectedEffectType by remember(engineState.baseVariantId) { mutableStateOf<CardEffectType?>(null) }
-    val activeCard = handCards.getOrNull(selectedCardIdx)
-        ?: BuiltInTcgCatalog.cardsForVariant(engineState.baseVariantId).first()
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
-            .testTag("game_engine_turn_and_effect_panel"),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "CORE GAMEENGINE • TURN-BASED STATE MACHINE & EFFECT STACK",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = accent,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Turn ${engineState.turnNumber} • ${engineState.currentPhase.displayName} (${engineState.clientPhaseCode}) • Priority: ${engineState.priorityHolder.label}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Button(
-                    onClick = onStepPhase,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier.testTag("game_engine_step_phase_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Advance Phase",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Step -> ${engineState.currentPhase.nextPhase().code}",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // 5 Canonical Turn Phases Strip (DRAW -> STANDBY -> MAIN -> COMBAT -> END)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                TurnPhase.entries.forEach { phase ->
-                    val isCurrent = engineState.currentPhase == phase
-                    FilterChip(
-                        selected = isCurrent,
-                        onClick = { onSelectPhase(phase) },
-                        label = {
-                            Text(
-                                text = "${phase.code} (${phase.clientPhaseCodeFor(engineState.baseVariantId)})",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        modifier = Modifier.testTag("game_engine_phase_${phase.code.lowercase()}")
-                    )
-                }
-            }
-
-            Text(
-                text = engineState.currentPhase.phaseDescription,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // Card Effect Resolution Builder (Queue onto LIFO Chain / Stack & Resolve)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
-                    .padding(10.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "CARD EFFECT RESOLUTION (LIFO CHAIN / STACK: ${engineState.effectStack.size} QUEUED)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = RadiantGold,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "P1: ${engineState.hostLife} ${uiProfile.lifeLabel} • P2: ${engineState.opponentLife} ${uiProfile.lifeLabel}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = EmeraldReady,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    // Select Source Card from Hand
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        handCards.take(5).forEachIndexed { idx, card ->
-                            FilterChip(
-                                selected = selectedCardIdx == idx,
-                                onClick = { selectedCardIdx = idx },
-                                label = {
-                                    Text(
-                                        text = card.name,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1
-                                    )
-                                },
-                                modifier = Modifier.testTag("engine_effect_card_chip_$idx")
-                            )
-                        }
-                    }
-
-                    // Select Effect Type Override (or Auto-Parse from Card Text)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilterChip(
-                            selected = selectedEffectType == null,
-                            onClick = { selectedEffectType = null },
-                            label = { Text("Auto-Parse Text", style = MaterialTheme.typography.labelSmall) },
-                            modifier = Modifier.testTag("engine_effect_type_auto")
-                        )
-                        CardEffectType.entries.forEach { effectType ->
-                            FilterChip(
-                                selected = selectedEffectType == effectType,
-                                onClick = { selectedEffectType = effectType },
-                                label = {
-                                    Text(
-                                        text = effectType.displayTitle.substringBefore(" ("),
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                },
-                                modifier = Modifier.testTag("engine_effect_type_${effectType.code.lowercase()}")
-                            )
-                        }
-                    }
-
-                    // Action Buttons: Queue Effect on Chain/Stack, Resolve Top (LIFO), Resolve All
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { onQueueEffect(activeCard, selectedEffectType) },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .weight(1.1f)
-                                .testTag("game_engine_queue_effect_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Bolt,
-                                contentDescription = "Queue Card Effect on Chain/Stack",
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Queue Effect (CL${engineState.effectStack.size + 1})",
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Button(
-                            onClick = onResolveNextEffect,
-                            enabled = engineState.effectStack.isNotEmpty(),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("game_engine_resolve_next_button")
-                        ) {
-                            Text(
-                                text = "Resolve Top (${engineState.effectStack.size})",
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = onResolveAllEffects,
-                            enabled = engineState.effectStack.isNotEmpty(),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .weight(0.9f)
-                                .testTag("game_engine_resolve_all_button")
-                        ) {
-                            Text(
-                                text = "Resolve All",
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1
-                            )
-                        }
-                    }
-
-                    // Active LIFO Chain / Stack Queue Preview
-                    if (engineState.effectStack.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = "Pending Chain / Stack (Resolves Last-In, First-Out):",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = RadiantGold,
-                                fontWeight = FontWeight.Bold
-                            )
-                            engineState.effectStack.asReversed().forEach { item ->
-                                Text(
-                                    text = "• [CL${item.chainLinkNumber} • SS${item.spellSpeed}] ${item.sourceCard.name}: ${item.effectType.displayTitle} -> ${item.targetDescription}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    // Recently Resolved Card Effects History
-                    if (engineState.resolvedEffectsHistory.isNotEmpty()) {
-                        val latestResolved = engineState.resolvedEffectsHistory.first()
-                        Text(
-                            text = "Last Resolved: ${latestResolved.summary}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = EmeraldReady
-                        )
-                    }
-                }
-            }
-        }
+private fun SensorBar(label: String, value: Float, onValueChange: (Float) -> Unit) {
+    Column {
+        Text("$label: ${(value * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+        Slider(value = value, onValueChange = onValueChange, valueRange = 0f..1f)
     }
 }
-

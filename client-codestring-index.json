@@ -1,0 +1,439 @@
+{
+  "bridgeSchemaVersion": "1.1.0",
+  "sourceRepo": "Summer-Warrior/Tcg-game-engine-test",
+  "linkedCardMakerRepo": "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
+  "linkedMasterHubRepo": "Summer-Warrior/Project-MPV-RP-Master-Hub",
+  "upstreamSourceLock": false,
+  "allowTimeTravelFlagsOnMatchCards": false,
+  "allowedInMatchTemporalEffects": [
+    "End Turn",
+    "Extra Turn"
+  ],
+  "dossierOnlyFilters": [
+    19,
+    20,
+    21
+  ],
+  "firestoreBounds": {
+    "customCardNameMaxLength": 120,
+    "customCardAbilityMaxLength": 2000,
+    "deckCardIdsMaxCount": 100,
+    "hostBoardCardsMaxCount": 30,
+    "opponentBoardCardsMaxCount": 30
+  },
+  "boardDescriptorFormats": [
+    "name|cost|atk|def|type|ability",
+    "@V2|baseVariantId|code|name|type|pips|atk/def|effectType|ability"
+  ],
+  "twentyColorPieGrammar": {
+    "defaultSelectedCount": 0,
+    "colorlessPip": "{C}",
+    "wheelOrder": [
+      "W", "Iv", "Cy", "Az", "U", "In", "Vi", "Ob", "B", "Cr",
+      "Mg", "Sc", "R", "Or", "Am", "Ch", "G", "Ja", "Te", "Aq"
+    ],
+    "anchorIndices": [0, 4, 8, 12, 16],
+    "layer2PairCount": 190,
+    "layer2AcceptedSeparators": ["/", "·"],
+    "valueStateSuffixes": [":T", ":S", ":M"],
+    "choiceSplitSeparator": "|",
+    "weightedLeadSyntax": ["{A>B}", "{2A/B}"],
+    "layer18Syntax": "{-(A,B)}",
+    "layer19Syntax": "{-X}",
+    "layer20OmniPip": "{Ω}",
+    "layer20OmniVariants": [
+      { "code": "{Ω·M}", "geometry": "Hexagram Star" },
+      { "code": "{Ω·C}", "geometry": "Celestial Octagram" },
+      { "code": "{Ω·S}", "geometry": "Sacred Halo Ring" },
+      { "code": "{Ω·V}", "geometry": "Astral Merkaba" },
+      { "code": "{Ω·E}", "geometry": "Primordial Sunburst" },
+      { "code": "{Ω·A}", "geometry": "Solar Astrolabe" }
+    ]
+  },
+  "nonLockedClients": [
+    {
+      "clientId": "ULTIMATE_TCG_WIP",
+      "displayName": "Ultimate TCG (WIP Foundational System)",
+      "boardArchetype": "multi-lane-arena",
+      "originType": "FLAGSHIP_CUSTOM",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:ultimate-tcg-wip-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,8}$", "^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.lua",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "PXZ_FRONTLINE", "capacity": 5, "defaultCap": 3 },
+        { "id": "HIDDEN_STANDBY_ROW", "capacity": 3 },
+        { "id": "COMBINED_WORLD_ZONE", "capacity": 1 },
+        { "id": "SHIELD_ROW", "capacity": 6 },
+        { "id": "BACKLINE_3D_ANCHORS", "capacity": 15 }
+      ],
+      "piles": ["MAIN_DECK", "EXTRA_APEX_DECK", "GRAVEYARD", "EXILE", "RESOURCE_SUBDECKS_15"],
+      "resourcePools": ["MAGIC_PULSE", "FORCE_PULSE", "PXZ_XP_GAUGE_150"],
+      "turnPhases": ["Draw", "Resource/Setup", "Action/Battle", "End"],
+      "attributes": ["20_COLOR_ANGULAR_SPIN", "MATERIAL_TIER_1_TO_8", "FLAVOR_FILTER_INT"]
+    },
+    {
+      "clientId": "EDOPRO_CUSTOM_FORK",
+      "displayName": "21-Digit EDOPro Custom Clone (Non-Locked Fork)",
+      "boardArchetype": "zone-rows",
+      "originType": "CUSTOM_CLONE_21",
+      "upstreamSourceLock": false,
+      "derivedFromLockedIds": ["EDOPRO_BASE_MR5"],
+      "protocolHash": "sha256:edopro-custom-21d-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,8}$", "^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.lua",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "MAIN_MONSTER", "capacity": 5 },
+        { "id": "EXTRA_MONSTER", "capacity": 2 },
+        { "id": "SPELL_TRAP", "capacity": 5 },
+        { "id": "DEDICATED_PENDULUM", "capacity": 2 },
+        { "id": "FIELD_SPELL", "capacity": 1 },
+        { "id": "SKILL_CARD", "capacity": 1 },
+        { "id": "SOUL_ZONE", "capacity": 1 }
+      ],
+      "piles": ["MAIN_DECK", "EXTRA_DECK", "GRAVEYARD", "BANISHED"],
+      "resourcePools": ["LP_21_DIGIT", "SPEED_COUNTERS", "REGISTER_21"],
+      "turnPhases": ["Draw", "Standby", "Main 1", "Battle", "Main 2", "End"],
+      "attributes": ["LIGHT", "DARK", "FIRE", "WATER", "WIND", "EARTH", "DIVINE"]
+    },
+    {
+      "clientId": "FORGE_CUSTOM_CLONE",
+      "displayName": "21-Digit Nested-Planar Forge Clone (Non-Locked Fork)",
+      "boardArchetype": "battlefield-stack",
+      "originType": "CUSTOM_CLONE_21",
+      "upstreamSourceLock": false,
+      "derivedFromLockedIds": ["FORGE_MTG_BASE"],
+      "protocolHash": "sha256:forge-custom-21d-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,8}$", "^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.json",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "BATTLEFIELD_PERMANENTS", "capacity": 30 },
+        { "id": "LIFO_STACK", "capacity": 20 },
+        { "id": "COMMAND_ZONE", "capacity": 2 },
+        { "id": "PLANAR_DECK_ZONE", "capacity": 1 }
+      ],
+      "piles": ["LIBRARY", "GRAVEYARD", "EXILE", "SIDEBOARD"],
+      "resourcePools": ["MANA_POOL_20_COLOR", "LIFE_TOTAL_21"],
+      "turnPhases": ["Untap/Upkeep/Draw", "Precombat Main", "Combat", "Postcombat Main", "End"],
+      "attributes": ["20_COLOR_PIE_PIPS", "POWER_21", "TOUGHNESS_21"]
+    },
+    {
+      "clientId": "HYBRID_FORGE_EDOPRO_MIX",
+      "displayName": "Hybrid Forge + EDOPro 21-Digit Mix (Non-Locked)",
+      "boardArchetype": "zone-rows",
+      "originType": "USER_HYBRID",
+      "upstreamSourceLock": false,
+      "derivedFromLockedIds": ["EDOPRO_BASE_MR5", "FORGE_MTG_BASE"],
+      "protocolHash": "sha256:hybrid-forge-edopro-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.lua",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "MAIN_MONSTER", "capacity": 5 },
+        { "id": "SPELL_TRAP", "capacity": 5 },
+        { "id": "DEDICATED_PENDULUM", "capacity": 2 },
+        { "id": "STACK_CHAIN_BRIDGE", "capacity": 20 }
+      ],
+      "piles": ["MAIN_DECK", "EXTRA_DECK", "GRAVEYARD", "EXILE_BANISHED"],
+      "resourcePools": ["LP_21_DIGIT", "MANA_POOL_20_COLOR"],
+      "turnPhases": ["Draw", "Main 1", "Combat", "Main 2", "End"],
+      "attributes": ["20_COLOR_PIE_PIPS", "ATK_21", "DEF_21"]
+    },
+    {
+      "clientId": "NEXUS_WEB_TABLETOP",
+      "displayName": "Built-In Web Tabletop Blueprint",
+      "boardArchetype": "multi-lane-arena",
+      "originType": "BUILT_IN_TABLETOP",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:nexus-web-tabletop-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.json",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "HOST_BOARD", "capacity": 30 },
+        { "id": "OPPONENT_BOARD", "capacity": 30 },
+        { "id": "WORLD_FIELD", "capacity": 1 }
+      ],
+      "piles": ["MAIN_DECK", "DISCARD", "EXILE"],
+      "resourcePools": ["LIFE", "MANA_POOL"],
+      "turnPhases": ["Draw", "Main", "Combat", "End"],
+      "attributes": ["20_COLOR_PIE_PIPS", "COST", "ATK", "DEF"]
+    },
+    {
+      "clientId": "NOTEBOOK_DUEL_MONSTERS",
+      "displayName": "Notebook Duel Monsters Formats (Expanded / Yumi / Turbo / Action / Speed / Rush)",
+      "boardArchetype": "zone-rows",
+      "originType": "NOTEBOOK_REALM",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:notebook-duel-monsters-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,8}$", "^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.lua",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "MAIN_MONSTER", "capacity": 5 },
+        { "id": "EXTRA_MONSTER", "capacity": 2 },
+        { "id": "SPELL_TRAP", "capacity": 5 },
+        { "id": "DEDICATED_PENDULUM", "capacity": 2 },
+        { "id": "FIELD_SPELL", "capacity": 1 },
+        { "id": "SPEED_SPELL", "capacity": 1 },
+        { "id": "ACTION_SPELL", "capacity": 3 },
+        { "id": "SKILL_CARD", "capacity": 1 },
+        { "id": "SOUL_ZONE", "capacity": 1 },
+        { "id": "CHARACTER_ITEM_ZONE", "capacity": 2 }
+      ],
+      "piles": ["MAIN_DECK", "EXTRA_DECK", "GY", "BANISHED"],
+      "resourcePools": ["LP", "SPEED_COUNTERS", "ITEM_COUNTERS_20"],
+      "turnPhases": ["Draw", "Standby", "Main 1", "Battle", "Main 2", "End"],
+      "attributes": ["LIGHT", "DARK", "FIRE", "WATER", "WIND", "EARTH", "DIVINE"]
+    },
+    {
+      "clientId": "NOTEBOOK_NESTED_PLANAR_MTG",
+      "displayName": "Notebook Nested-Planar MTG Realm",
+      "boardArchetype": "battlefield-stack",
+      "originType": "NOTEBOOK_REALM",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:notebook-nested-planar-mtg-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.json",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "BATTLEFIELD", "capacity": 30 },
+        { "id": "STACK", "capacity": 20 },
+        { "id": "COMMAND_ZONE", "capacity": 2 },
+        { "id": "HOLOGRAPHIC_CELEBRATION_PLANE", "capacity": 1 }
+      ],
+      "piles": ["LIBRARY", "GRAVEYARD", "EXILE"],
+      "resourcePools": ["MANA_20_COLOR", "LIFE"],
+      "turnPhases": ["Beginning", "Precombat Main", "Combat", "Postcombat Main", "Ending"],
+      "attributes": ["20_COLOR_PIE_PIPS", "POWER", "TOUGHNESS"]
+    },
+    {
+      "clientId": "NOTEBOOK_PLANET_CRAY_VANGUARD",
+      "displayName": "Notebook Planet Cray Vanguard Realm",
+      "boardArchetype": "formation-and-ranks",
+      "originType": "NOTEBOOK_REALM",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:notebook-planet-cray-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.json",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "VANGUARD_CIRCLE", "capacity": 1 },
+        { "id": "REAR_GUARD_CIRCLES", "capacity": 5 },
+        { "id": "DAMAGE_ZONE", "capacity": 6 },
+        { "id": "GUARDIAN_CIRCLE", "capacity": 5 }
+      ],
+      "piles": ["MAIN_DECK", "SOUL_STACK", "DROP_ZONE", "BIND_ZONE"],
+      "resourcePools": ["COUNTER_BLAST", "SOUL_BLAST", "DRIVE_CHECKS"],
+      "turnPhases": ["Stand", "Draw", "Ride", "Main", "Battle", "End"],
+      "attributes": ["GRADE_0_TO_4", "POWER", "SHIELD", "CRITICAL"]
+    },
+    {
+      "clientId": "TCG_VIDEO_GAME_BLUEPRINT",
+      "displayName": "TCG Video Games Clean-Room Blueprint",
+      "boardArchetype": "video-game-action-or-roguelike",
+      "originType": "VIDEO_GAME_BLUEPRINT",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:tcg-video-game-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.json",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "PANEL_GRID_3X6", "capacity": 18 },
+        { "id": "SLEIGHT_QUEUE", "capacity": 3 },
+        { "id": "RELIC_BAR", "capacity": 12 }
+      ],
+      "piles": ["CHIP_FOLDER", "DRAW_PILE", "DISCARD_PILE"],
+      "resourcePools": ["CUSTOM_GAUGE", "ENERGY", "CHIPS_X_MULT"],
+      "turnPhases": ["Intent Telegraph", "Custom/Draw", "Action/Sleight", "End"],
+      "attributes": ["CHIP_CODE", "CARD_VALUE_0_9", "INTENT_DAMAGE"]
+    },
+    {
+      "clientId": "MINI_GAMES_BLUEPRINT",
+      "displayName": "Video-Game Card Mini-Games Blueprint",
+      "boardArchetype": "directional-and-territory-grid",
+      "originType": "MINI_GAME_BLUEPRINT",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:mini-games-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.json",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "DIRECTIONAL_GRID", "capacity": 16 },
+        { "id": "ELEMENTAL_DICE_TRAY", "capacity": 8 }
+      ],
+      "piles": ["MINI_DECK", "CAPTURED_PILE"],
+      "resourcePools": ["ELEMENTAL_DICE_8", "PAWNS", "CARAVAN_SCORE"],
+      "turnPhases": ["Roll/Setup", "Placement/Capture", "Resolution", "End"],
+      "attributes": ["NORTH_SOUTH_EAST_WEST_RANKS", "TERRITORY_TILES"]
+    },
+    {
+      "clientId": "NICHE_DEFUNCT_BLUEPRINT",
+      "displayName": "Niche, Indie, LCG & Archival Defunct TCG Blueprint",
+      "boardArchetype": "tug-of-war-track",
+      "originType": "NICHE_DEFUNCT_BLUEPRINT",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:niche-defunct-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.json",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "MEMORY_TRACK", "capacity": 21 },
+        { "id": "TRIANGLE_FORMATION", "capacity": 6 },
+        { "id": "SERVERS_LANES", "capacity": 5 }
+      ],
+      "piles": ["MAIN_DECK", "ARCHIVE_DISCARD"],
+      "resourcePools": ["MEMORY_GAUGE", "MUGIC", "CREDITS"],
+      "turnPhases": ["Start", "Action", "Combat", "End"],
+      "attributes": ["COST", "POWER", "ELEMENTS"]
+    },
+    {
+      "clientId": "AI_USER_COMBO_SANDBOX",
+      "displayName": "AI & User Cross-TCG Combo Sandbox (Apex / Omni-Hybrid)",
+      "boardArchetype": "multi-lane-arena",
+      "originType": "AI_COMBO",
+      "upstreamSourceLock": false,
+      "protocolHash": "sha256:ai-user-combo-sandbox-v1.1",
+      "schemaVersion": "1.1.0",
+      "allowTimeTravelFlagsOnMatchCards": false,
+      "codeStringRules": {
+        "allowedIdFormats": ["^[0-9]{1,21}$", "UUID"],
+        "scriptTemplate": "c<code_string>.lua",
+        "maxDigitPrecision": 21,
+        "customCodeVarExpr21Regex": "^(?!.*[0-9]{22}).{1,240}$"
+      },
+      "zones": [
+        { "id": "MERGED_HYBRID_BOARD", "capacity": 30 },
+        { "id": "COMBINED_STACK_CHAIN", "capacity": 20 },
+        { "id": "MECHANIC_MODULE_SLOTS", "capacity": 6 }
+      ],
+      "piles": ["HYBRID_MAIN", "HYBRID_EXTRA", "GRAVEYARD", "EXILE"],
+      "resourcePools": ["HYBRID_LIFE_21", "HYBRID_MANA_20_COLOR", "MODULE_XP"],
+      "turnPhases": ["Draw", "Setup", "Action/Battle", "End"],
+      "attributes": ["20_COLOR_PIE_PIPS", "COMBO_MODULES", "ATK_21", "DEF_21"]
+    }
+  ],
+  "lockedClientsReadOnly": [
+    {
+      "clientId": "EDOPRO_BASE_MR5",
+      "displayName": "EDOPro (ProjectIgnis/EDOPro — Locked Upstream Reference)",
+      "upstreamSourceLock": true,
+      "requiresStrictBase": true,
+      "upstreamRepoUrl": "https://github.com/ProjectIgnis/EDOPro",
+      "protocolHash": "sha256:edopro-mr5-40.1.4-locked",
+      "suggestedNonLockedForkId": "EDOPRO_CUSTOM_FORK"
+    },
+    {
+      "clientId": "FORGE_MTG_BASE",
+      "displayName": "Forge MTG (Card-Forge/forge — Locked Upstream Reference)",
+      "upstreamSourceLock": true,
+      "requiresStrictBase": true,
+      "upstreamRepoUrl": "https://github.com/Card-Forge/forge",
+      "protocolHash": "sha256:forge-mtg-2.0.09-locked",
+      "suggestedNonLockedForkId": "FORGE_CUSTOM_CLONE"
+    },
+    {
+      "clientId": "COCKATRICE_LOCKED_BASE",
+      "displayName": "Cockatrice (Cockatrice/Cockatrice — Locked Upstream Reference)",
+      "upstreamSourceLock": true,
+      "requiresStrictBase": true,
+      "upstreamRepoUrl": "https://github.com/Cockatrice/Cockatrice",
+      "protocolHash": "sha256:cockatrice-upstream-locked",
+      "suggestedNonLockedForkId": "FORGE_CUSTOM_CLONE"
+    },
+    {
+      "clientId": "XMAGE_LOCKED_BASE",
+      "displayName": "XMage (magefree/mage — Locked Upstream Reference)",
+      "upstreamSourceLock": true,
+      "requiresStrictBase": true,
+      "upstreamRepoUrl": "https://github.com/magefree/mage",
+      "protocolHash": "sha256:xmage-upstream-locked",
+      "suggestedNonLockedForkId": "FORGE_CUSTOM_CLONE"
+    },
+    {
+      "clientId": "TALISHAR_LOCKED_BASE",
+      "displayName": "Talishar (Talishar/Talishar — Locked Upstream Reference)",
+      "upstreamSourceLock": true,
+      "requiresStrictBase": true,
+      "upstreamRepoUrl": "https://github.com/Talishar/Talishar",
+      "protocolHash": "sha256:talishar-upstream-locked",
+      "suggestedNonLockedForkId": "NICHE_DEFUNCT_BLUEPRINT"
+    },
+    {
+      "clientId": "KARABAST_LOCKED_BASE",
+      "displayName": "Karabast (SWU-Karabast/forceteki — Locked Upstream Reference)",
+      "upstreamSourceLock": true,
+      "requiresStrictBase": true,
+      "upstreamRepoUrl": "https://github.com/SWU-Karabast/forceteki",
+      "protocolHash": "sha256:karabast-upstream-locked",
+      "suggestedNonLockedForkId": "NEXUS_WEB_TABLETOP"
+    },
+    {
+      "clientId": "JINTEKI_LOCKED_BASE",
+      "displayName": "Jinteki.net (mtgred/netrunner — Locked Upstream Reference)",
+      "upstreamSourceLock": true,
+      "requiresStrictBase": true,
+      "upstreamRepoUrl": "https://github.com/mtgred/netrunner",
+      "protocolHash": "sha256:jinteki-upstream-locked",
+      "suggestedNonLockedForkId": "NICHE_DEFUNCT_BLUEPRINT"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "1.1.0",
+  "allowTimeTravelFlagsOnMatchCards": false,
+  "packs": [
+    {
+      "packId": "nexus_ultimate_wip_core_01",
+      "packName": "Ultimate TCG (WIP) — Foundational Core Pack",
+      "targetClientId": "ULTIMATE_TCG_WIP",
+      "upstreamSourceLock": false,
+      "cards": [
+        {
+          "cardId": "000000000000000000001",
+          "name": "Angular Spin Resonator",
+          "cardType": "Frontline Pair Unit",
+          "pipCost": "{W/Cy}",
+          "atk21": "2400",
+          "def21": "1800",
+          "effectType": "RESOURCE_BOOST",
+          "temporalEffect": "",
+          "ability": "WIP / Extensible: On Pair Entry, gain +15% PXZ XP Gauge and manifest 1 Mana Stone on a Backline 3D Anchor."
+        },
+        {
+          "cardId": "000000000000000000002",
+          "name": "Hourglass of the Second Beat",
+          "cardType": "Resource Sub-Deck — Hourglass (Batch 2 WIP)",
+          "pipCost": "{U·Vi}",
+          "atk21": "0",
+          "def21": "0",
+          "effectType": "DRAW_ENGINE",
+          "temporalEffect": "Extra Turn",
+          "ability": "WIP / Extensible: Strictly bounded temporal effect — grants 1 Extra Turn when activated under Dual-Law World Zone."
+        },
+        {
+          "cardId": "900001010000000000021",
+          "name": "Omnichroma Sovereign Prism",
+          "cardType": "Apex Extra Unit",
+          "pipCost": "{Ω·M}",
+          "atk21": "999999999999999999999",
+          "def21": "999999999999999999999",
+          "effectType": "DIRECT_DAMAGE_BURN",
+          "temporalEffect": "End Turn",
+          "ability": "Requires all 20 angular spin-polarization vectors ({Ω·M} Hexagram Star). Triggers Cross Hit on Pair Attack; may force End Turn cleanly."
+        }
+      ]
+    },
+    {
+      "packId": "nexus_notebook_duel_monsters_01",
+      "packName": "Notebook Duel Monsters — Dedicated Pendulum & Turbo Pack",
+      "targetClientId": "NOTEBOOK_DUEL_MONSTERS",
+      "upstreamSourceLock": false,
+      "cards": [
+        {
+          "cardId": "900001020000000000001",
+          "name": "Velocity Circuit Dragon",
+          "cardType": "Synchro / Speed Monster",
+          "pipCost": "{R/Or}",
+          "atk21": "3200",
+          "def21": "2500",
+          "effectType": "DIRECT_DAMAGE_BURN",
+          "temporalEffect": "",
+          "ability": "Requires Speed World in the Pre-Filled Field Spell Zone. Remove 4 Speed Counters: inflict 800 damage."
+        },
+        {
+          "cardId": "900001020000000000002",
+          "name": "Coin Box Item Drift",
+          "cardType": "Turbo Item Spell (Mario Kart Duel)",
+          "pipCost": "{Am}",
+          "atk21": "0",
+          "def21": "0",
+          "effectType": "RESOURCE_BOOST",
+          "temporalEffect": "",
+          "ability": "Add 1 to 6 Item Counters (up to 20 max) to your Item Zone based on a d6 roll."
+        }
+      ]
+    },
+    {
+      "packId": "nexus_ai_combo_showcase_01",
+      "packName": "Apex Mediated Nexus — AI Combo Starter Pack",
+      "targetClientId": "AI_USER_COMBO_SANDBOX",
+      "upstreamSourceLock": false,
+      "cards": [
+        {
+          "cardId": "a7f2c901-4d8e-4c11-9b02-000000000001",
+          "name": "Drive-Stack Pendulum Vanguard",
+          "cardType": "Omni-Hybrid Vanguard / Pendulum",
+          "pipCost": "{W/U/B}",
+          "atk21": "13000",
+          "def21": "10000",
+          "effectType": "DRAW_ENGINE",
+          "temporalEffect": "",
+          "ability": "Bridges Dedicated Pendulum Scale, LIFO Stack resolution, and Twin Drive Checks in Apex Mediated Nexus."
+        }
+      ]
+    }
+  ]
+}

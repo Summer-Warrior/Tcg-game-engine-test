@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "1.1.0",
+  "entries": [
+    {
+      "id": "umft_20_color_pie",
+      "title": "UMFT 20-Color Angular Spin-Polarization Vector Science",
+      "category": "COSMOLOGY",
+      "markdown": "# 20-Color Pie (UMFT Scientific Vector Model)\n\nUnder Unified Multiversal Field Theory (UMFT), the 20 Colors around the Wheel represent **angular spin-polarization vectors** — strictly decoupled from Elements, Polarity, Morality, and Emotion.\n\n- **5 Gold-Bordered Anchors**: `{W}` (0), `{U}` (4), `{B}` (8), `{R}` (12), `{G}` (16)\n- **15 Bridge Vectors**: `{Iv}`, `{Cy}`, `{Az}`, `{In}`, `{Vi}`, `{Ob}`, `{Cr}`, `{Mg}`, `{Sc}`, `{Or}`, `{Am}`, `{Ch}`, `{Ja}`, `{Te}`, `{Aq}`\n- **Layer 0**: Colorless `{C}`\n- **Layer 2**: All 190 Option B Fused Pairs (Allied Anchors 5, Enemy Anchors 5, 180° Opposites 10, Anchor–Bridge 75, Bridge–Bridge 105)\n- **Layer 20 Omnichroma `{Ω}`**: 6 bespoke sacred celestial geometries (`{Ω·M}`, `{Ω·C}`, `{Ω·S}`, `{Ω·V}`, `{Ω·E}`, `{Ω·A}`)."
+    },
+    {
+      "id": "ultimate_tcg_wip",
+      "title": "Flagship Ultimate TCG (WIP Foundational System)",
+      "category": "RULESET",
+      "markdown": "# Ultimate TCG (WIP / Extensible)\n\n- **Non-Card Avatar**: 0 deck slots; lives on Multi-Avatar Accounts with persistent Levels, 3D Grid Stats, openly shown Sequential Flavor Filters (`1–85`, pure integers; `Xa` strictly for Gameplay Design), Aspect-Penalty off-flavor surcharges (`1a`), and dynamic Flavor Drift.\n- **Deck Rules**: Deferred minimums, uncapped deck ceiling, **5-copy default** per card name (rules-text overrides allowed below or above 5), Main Deck (with Lands), Extra/Apex Deck, and **15+ Resource Sub-Decks**.\n- **Board**: 2D Game Mat + Toggleable 3D Combat Positioning Grid, Hidden Standby Row (2–3), Combined World Zone (`[Magic]`/`[Force]`/`[Dual-Law]`/`[Extraversal Rift]` + Heart-Pocket Keyhole), 4 Turn Phases (`Draw -> Resource/Setup -> Action/Battle -> End`), LIFO Stack, 5–6 Shields, Project X Zone Frontline (3–5 cap, default 3, Pair + Solo, Cross Hit, 0%–150% XP Gauge), and Dual-Chamber Vitality (Magic Pulse & Force Pulse + Outsider toggle).\n- **Strict Time-Travel Client Rule**: Match cards NEVER carry Filters 19–21. Only `End Turn` and `Extra Turn` temporal effects are permitted in match play."
+    },
+    {
+      "id": "notebook_duel_monsters",
+      "title": "Notebook Duel Monsters & Hybrid Formats",
+      "category": "NOTEBOOK_FORMATS",
+      "markdown": "# Notebook Duel Monsters Formats\n\nAll Notebook Formats run as non-locked rule sets while keeping `ProjectIgnis/EDOPro` strictly locked in its upstream base slot:\n\n1. **Base Master Rule (Expanded)**: 5 Monster, 2 EMZ, **2 Dedicated Pendulum Zones (NOT inside S/T)**, 5 S/T, Field Spell, Skill Card(s), Soul Zone, Main (40–60), Extra (up to 15), GY, Banished.\n2. **Yumi Muto Maximum-Power Hybrid Mat**: 5 Main Monster, 5 full S/T, 2 dedicated Pendulum, 1 Field, 1 EMZ.\n3. **Turbo Duel (Base & Mario Kart Duel)**: Pre-Filled Field Spell + Speed Spell Zone (+ Character Zone & Item Zone up to 20 counters; Coin Box adds 1–6).\n4. **Action Duel (Base & Mario Party Duel WIP)**: Base Master Rule + 3 Action Spell Zones.\n5. **Speed Duel & Rush Duel (Base 3/3 & Updated 5/2 EMZ/5)** with dedicated Pendulum Zones and Soul Zone."
+    },
+    {
+      "id": "planet_cray_vanguard_and_arenas",
+      "title": "Planet Cray Vanguard, Morphing Grid & Tokusatsu Tether",
+      "category": "ARENA_HOSTING",
+      "markdown": "# Planet Cray & Universal Arena Hosting\n\n- **Planet Cray Core**: 1 Vanguard + 5 Rear-Guards, Grade Riding, Soul-Stack, 6-Point Damage Zone, Counter-Blast, Drive/Trigger Checks, Hand-Blocking.\n- **Opt-In Side-Project Formats Toggle**: Planar Reality Law Slot, Inverted Resonance Over-Riding, Triple-Pathway Rides, Adjacency Support.\n- **Arena Hosting Modes**: Native Universe Match vs. Off-World Morphing Grid Battlefield (Polarity Insulation + Ludic Containment) vs. Out-of-Game Card Invocation (personal-mana echoes + Evocation Fading).\n- **Tokusatsu Grid-Tether Modifiers**: 55a Secrecy, Duplicate-Color Interference vs. Multi-Color Megazord XP, Unaware vs. Aware Handshake risk."
+    },
+    {
+      "id": "memorial_forge_protocol",
+      "title": "Memorial Forge & Dual-Channel Chat Separation",
+      "category": "PERSISTENT_WORLD",
+      "markdown": "# Memorial Forge & Persistent World Rules\n\n- **Strict Dual-Channel Separation**: **IC Chat** is the SOLE feed into the Memorial Forge. **OOC Normal** and **OOC Ruling-Call** logs are strictly separated.\n- **Non-Automatic Global Pool Acquisition**: Legendary events are Event-Flagged and Player-Voted before entering the Full-Lifespan Memorial Forge.\n- **Offline AI Two-Gate Authorization**: Gate 1 checks Native Intended Time on the Server-Synced Clock; Gate 2 requires Companion App Approval, Guardrails, Decline, or Live Drop-In.\n- **Time-Travel & Causal Quarantine**: Filters 19–21 appear ONLY on Sovereign World-Walker Avatar profiles and Memorial Forge dossiers."
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "thisRepo": "Summer-Warrior/Tcg-game-engine-test",
+  "thisBranch": "main",
+  "linkedHubRepo": "Summer-Warrior/Project-MPV-RP-Master-Hub",
+  "linkedHubBranch": "main",
+  "linkedCardMakerRepo": "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
+  "linkedCardMakerBranch": "main",
+  "cardMakerAndroidPackage": "com.aistudio.tcgstudio.kqrmvx",
+  "cardMakerDeepLinkScheme": "tcgstudio://nexus-hub",
+  "gameEngineAndroidPackage": "com.aistudio.nexustcg.vxqrmk",
+  "gameEngineDeepLinkScheme": "nexus-tcg-engine://open",
+  "bridgeSchemaVersion": "1.1.0",
+  "syncTargetPath": "client-codestring-index.json",
+  "hubIndexPath": "client-codestring-index.json",
+  "mirrorIndexPath": "nexus-bridge/client-codestring-index.json",
+  "cardPackImportPaths": [
+    "nexus-bridge/card-packs/"
+  ],
+  "handshakeContractPath": "handshake-contract.json",
+  "linkVerificationMode": "MUTUAL_MANIFEST_REQUIRED"
+}

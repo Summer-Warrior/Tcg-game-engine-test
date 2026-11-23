@@ -5,10 +5,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
+        <package android:name="com.aistudio.tcgstudio.kqrmvx" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="nexus-master-hub" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="tcgstudio"
+                android:host="nexus-hub" />
         </intent>
     </queries>
 

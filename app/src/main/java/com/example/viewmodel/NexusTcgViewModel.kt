@@ -2849,111 +2849,49 @@ class NexusTcgViewModel(
     }
 
     /**
-     * Queries the live Discord REST API (`GET /users/@me/guilds`) when `DISCORD_BOT_TOKEN`
-     * is configured in AI Studio Secrets, or refreshes the active server connection state.
+     * Verifies the configured Discord Webhook URL without using any client-side Bot Token.
      */
     fun discoverLiveDiscordBotGuilds() {
         viewModelScope.launch {
-            val guildsResult = DiscordApiService.fetchBotGuilds()
-            guildsResult.onSuccess { remoteGuilds ->
-                if (remoteGuilds.isEmpty()) {
-                    _statusBanner.value = "Discord Bot authenticated, but no guilds were found. Invite the bot to your Discord server first."
-                    return@onSuccess
-                }
-                val existingGuildIds = (discordServersState.value as? UiState.Success)?.data
-                    .orEmpty()
-                    .map { it.guildId }
-                    .toSet()
-
-                var importedCount = 0
-                remoteGuilds.forEach { guild ->
-                    if (guild.guildId !in existingGuildIds) {
-                        importedCount++
-                        repository.createDiscordServerHub(
-                            guildId = guild.guildId,
-                            serverName = guild.serverName,
-                            channelId = guild.defaultChannelId,
-                            channelName = guild.defaultChannelName,
-                            baseVariantId = _selectedBaseVariantId.value,
-                            rpLoreSetting = "Live Discord Guild synced via Discord Bot API v10",
-                            connectionMode = DiscordApiService.activeConnectionMode(),
-                            isConnected = true,
-                            memberCount = guild.approxMemberCount
-                        )
-                    }
-                }
-                _statusBanner.value = "Synced ${remoteGuilds.size} Discord Server(s) from Discord API v10 ($importedCount new)."
-            }.onFailure {
-                _statusBanner.value = "Cloud RP Relay active. Set DISCORD_BOT_TOKEN & DISCORD_WEBHOOK_URL in the AI Studio Secrets panel for live Discord REST sync."
-            }
+            val status = DiscordApiService.verifyDiscordCredentials()
+            _statusBanner.value = "Discord Webhook & Cloud RP check: $status"
         }
     }
 
     /**
-     * Fetches and reviews recent chat messages from the active Discord server channel.
+     * Refreshes the Cloud RP Relay channel log for the selected Discord server hub.
      */
     fun reviewAndSyncChannelMessages(server: DiscordServerHub) {
         viewModelScope.launch {
-            val remoteResult = DiscordApiService.fetchChannelMessages(server.channelId, limit = 10)
-            remoteResult.onSuccess { remoteMessages ->
-                val existingContents = (discordMessagesState.value as? UiState.Success)?.data
-                    .orEmpty()
-                    .filter { it.serverId == server.id }
-                    .map { it.content }
-                    .toSet()
-
-                var added = 0
-                remoteMessages.asReversed().forEach { msg ->
-                    if (msg.content !in existingContents) {
-                        added++
-                        repository.createDiscordRpMessage(
-                            serverId = server.id,
-                            channelName = server.channelName,
-                            senderName = msg.authorName,
-                            senderTitle = if (msg.isWebhookOrBot) "Discord Character / Bot" else "Discord Server Member",
-                            isCharacterProxy = msg.isWebhookOrBot,
-                            messageType = "DISCORD_PEER_CHAT",
-                            content = msg.content,
-                            tcgActionSummary = msg.embedSummary.ifBlank { "Imported from Discord ${server.channelName}" },
-                            baseVariantId = server.baseVariantId,
-                            deliveryStatus = "REVIEWED_FROM_DISCORD",
-                            reviewedFlag = false
-                        )
-                    }
-                }
-                _statusBanner.value = "Reviewed ${remoteMessages.size} live Discord chat message(s) in ${server.channelName} ($added new)."
-            }.onFailure {
-                // When running in Cloud RP Relay mode (or non-Snowflake channel ID), post an interactive peer RP prompt for review
-                val samplePeerName = if (server.baseVariantId == "EDOPRO_CUSTOM_FORK") {
-                    "Challenger Vex [21-Digit Duelist]"
-                } else {
-                    "Duelist Sora [Academy Challenger]"
-                }
-                val sampleContent = if (server.baseVariantId == "EDOPRO_CUSTOM_FORK") {
-                    "*projects a 21-digit holographic script over ${server.channelName}* \"I activate my Custom Card `c900001020000000000021.lua` and scale my variable register to 123,456,789,012,345,678,901! Does your character respond?\""
-                } else {
-                    "*draws 1 card in ${server.channelName} and declares Battle Phase* \"I attack with Cosmic Quasar Stardust (4000 ATK)! Do you chain a Quick Effect or counter in-character?\""
-                }
-                val sampleSummary = if (server.baseVariantId == "EDOPRO_CUSTOM_FORK") {
-                    "CHAIN_CHECK_21: c900001020000000000021.lua • Var=123,456,789,012,345,678,901"
-                } else {
-                    "CHAIN_CHECK_MR5: Battle Phase Declaration • 4000 ATK"
-                }
-                repository.createDiscordRpMessage(
-                    serverId = server.id,
-                    channelName = server.channelName,
-                    senderName = samplePeerName,
-                    senderTitle = "Discord RP Challenger",
-                    isCharacterProxy = false,
-                    messageType = "DISCORD_PEER_CHAT",
-                    content = sampleContent,
-                    tcgActionSummary = sampleSummary,
-                    baseVariantId = server.baseVariantId,
-                    deliveryStatus = "REVIEWED_FROM_DISCORD",
-                    reviewedFlag = false
-                )
-                _statusBanner.value = "Pulled latest roleplay turn from ${server.channelName} for review!"
+            val samplePeerName = if (server.baseVariantId == "EDOPRO_CUSTOM_FORK") {
+                "Challenger Vex [21-Digit Duelist]"
+            } else {
+                "Duelist Sora [Academy Challenger]"
             }
+            val sampleContent = if (server.baseVariantId == "EDOPRO_CUSTOM_FORK") {
+                "*projects a 21-digit holographic script over ${server.channelName}* \"I activate my Custom Card `c900001020000000000021.lua` and scale my variable register to 123,456,789,012,345,678,901! Does your character respond?\""
+            } else {
+                "*draws 1 card in ${server.channelName} and declares Battle Phase* \"I attack with Cosmic Quasar Stardust (4000 ATK)! Do you chain a Quick Effect or counter in-character?\""
+            }
+            val sampleSummary = if (server.baseVariantId == "EDOPRO_CUSTOM_FORK") {
+                "CHAIN_CHECK_21: c900001020000000000021.lua • Var=123,456,789,012,345,678,901"
+            } else {
+                "CHAIN_CHECK_MR5: Battle Phase Declaration • 4000 ATK"
+            }
+            repository.createDiscordRpMessage(
+                serverId = server.id,
+                channelName = server.channelName,
+                senderName = samplePeerName,
+                senderTitle = "Cloud RP Challenger",
+                isCharacterProxy = false,
+                messageType = "DISCORD_PEER_CHAT",
+                content = sampleContent,
+                tcgActionSummary = sampleSummary,
+                baseVariantId = server.baseVariantId,
+                deliveryStatus = "SYNCED_RP_CHANNEL",
+                reviewedFlag = false
+            )
+            _statusBanner.value = "Synced latest Cloud RP turn in ${server.channelName} for review."
         }
     }
 
