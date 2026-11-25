@@ -53,11 +53,17 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.data.CardOrigin
+import com.example.data.FederatedCardPack
 import com.example.data.NexusHubBridgeService
 import com.example.data.WikiEntry
+import com.example.ui.theme.CardOriginBadge
 import com.example.ui.theme.CrimsonAlert
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldReady
 import com.example.ui.theme.RadiantGold
+import com.example.ui.theme.duelDiskPlate
+import com.example.ui.theme.rememberChamferedDuelShape
 
 data class NonCardAvatarDossier(
     val id: String,
@@ -94,13 +100,22 @@ data class MemorialForgeRecord(
 fun LoreAvatarsMemorialScreen(
     wikis: List<WikiEntry>,
     icFeedEntries: List<String>,
-    onStatusMessage: (String) -> Unit
+    onStatusMessage: (String) -> Unit,
+    federatedCardPacks: List<FederatedCardPack> = emptyList()
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
 
     var subTab by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = listOf("Cosmology Wikis", "Avatars & Rules", "Memorial Forge")
+    val splitOffPacks = remember(federatedCardPacks) {
+        federatedCardPacks.filter { it.isSplitOffSet }
+    }
+    val tabs = listOf(
+        "Cosmology Wikis",
+        "Avatars & Rules",
+        "Memorial Forge",
+        "Split-Off Sets (${splitOffPacks.size})"
+    )
 
     // Setting-Driven Tournament Mode Toggles
     var isLoreCombatMode by rememberSaveable { mutableStateOf(false) }
@@ -528,6 +543,154 @@ fun LoreAvatarsMemorialScreen(
                                     }
                                 }
                                 Text(m.icSummary, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+
+            3 -> {
+                // Fan-Fiction & Split-Off Sets Lore Archive (100% Official Canon Retention)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("lore_split_off_sets_tab"),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .duelDiskPlate(accentColor = RadiantGold, cutSize = 12.dp)
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "FAN-FICTION & CUSTOM SPLIT-OFF SETS ARCHIVE",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RadiantGold
+                            )
+                            Text(
+                                text = "Every Split-Off Set exported from MPV Card Maker MUST preserve 100% of its parent official set's original canon cards alongside Fan-Fiction AU Variants and Original OCs.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (splitOffPacks.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No Split-Off Sets loaded yet. Pull packs from MPV Card Maker in the Vault Bridge tab.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        items(splitOffPacks, key = { it.packId }) { pack ->
+                            val meta = pack.splitOff ?: return@items
+                            val canonCards = pack.cards.filter { it.cardOrigin == CardOrigin.CANON_ORIGINAL }
+                            val auCards = pack.cards.filter { it.cardOrigin == CardOrigin.FAN_ALTERNATE_VARIANT }
+                            val ocCards = pack.cards.filter { it.cardOrigin == CardOrigin.ORIGINAL_OC_CARD }
+                            val pillShape = rememberChamferedDuelShape(6.dp)
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .duelDiskPlate(accentColor = ElectricCyan, cutSize = 12.dp, pulseEnergy = true)
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${meta.splitOffKind} • ${pack.targetClientId}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = ElectricCyan,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = meta.splitOffTitle,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Text(
+                                        text = "100% CANON RETAINED",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = EmeraldReady,
+                                        modifier = Modifier
+                                            .clip(pillShape)
+                                            .background(EmeraldReady.copy(alpha = 0.16f))
+                                            .border(1.dp, EmeraldReady, pillShape)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Text(
+                                    text = "Parent Official Set: ${meta.parentOfficialSetName} (${meta.parentOfficialSetId})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = RadiantGold
+                                )
+                                if (meta.canonDivergenceNotes.isNotBlank()) {
+                                    Text(
+                                        text = "Canon Divergence Lore: ${meta.canonDivergenceNotes}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+
+                                HorizontalDivider()
+
+                                Text(
+                                    text = "Canon Originals Retained (${canonCards.size}) • AU Variants (${auCards.size}) • Original OCs (${ocCards.size})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                pack.cards.forEach { card ->
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.65f))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = card.name,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            CardOriginBadge(
+                                                origin = card.cardOrigin,
+                                                linkedCanonCardId = card.linkedCanonCardId
+                                            )
+                                        }
+                                        Text(
+                                            text = "ID ${card.cardId} • ${card.pipCost} • ATK ${card.atk21} / DEF ${card.def21}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(card.ability, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
                             }
                         }
                     }

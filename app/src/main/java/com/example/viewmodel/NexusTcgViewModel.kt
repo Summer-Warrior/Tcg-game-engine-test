@@ -31,8 +31,12 @@ import com.example.data.RpCharacterPersona
 import com.example.data.SerializedGameBoardState
 import com.example.data.SerializedZonePlacement
 import com.example.data.SyncClientSeat
+import android.content.Context
 import com.example.data.TcgVariant
 import com.example.data.TurnPhase
+import com.example.data.telemetry.CardInteractionType
+import com.example.data.telemetry.CardUsageTelemetryTracker
+import com.example.data.telemetry.CustomCardUsageReportSnapshot
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -227,6 +231,29 @@ class NexusTcgViewModel(
 
     val gameEngine = GameEngine("EDOPRO_BASE_MR5")
     val gameEngineState: StateFlow<GameEngineState> = gameEngine.state
+
+    val telemetryTracker = CardUsageTelemetryTracker()
+    val telemetrySnapshot: StateFlow<CustomCardUsageReportSnapshot> = telemetryTracker.snapshot
+
+    fun attachTelemetryContext(context: Context) {
+        telemetryTracker.attachLocalPersistence(context)
+    }
+
+    fun addImportedCardToHandAndTrack(card: CardTemplate, match: MatchSession? = null) {
+        _playerHand.value = (listOf(card) + _playerHand.value).take(8)
+        telemetryTracker.recordCardDrawn(card, match?.id ?: "local_tabletop")
+        if (match != null && match.status != "FINISHED") {
+            deployCardToBattlefield(match, card)
+        } else {
+            telemetryTracker.recordCardPlayed(card, gameEngineState.value.turnNumber, "local_tabletop")
+        }
+    }
+
+    fun archiveAndResetTelemetry(): String {
+        val archived = telemetryTracker.archiveAndReset()
+        _statusBanner.value = "Archived and reset local Card Usage Telemetry counters."
+        return archived
+    }
 
     private var hasSeededInitialData = false
     private var hasEnsuredEdoProNodes = false
@@ -1542,6 +1569,7 @@ class NexusTcgViewModel(
         val pool = BuiltInTcgCatalog.cardsForVariant(baseVariantId)
         val drawn = pool.random()
         _playerHand.value = (_playerHand.value + drawn).take(8)
+        telemetryTracker.recordCardDrawn(drawn, match?.id ?: "local_tabletop")
         _statusBanner.value = "MSG_DRAW: Drew '${drawn.name}' (${drawn.passcode})"
         if (match != null && match.status != "FINISHED") {
             viewModelScope.launch {
@@ -1682,10 +1710,29 @@ class NexusTcgViewModel(
         if (match != null) {
             gameEngine.syncFromMatchSession(match, _playerHand.value)
         }
+        val previousLink = gameEngine.state.value.effectStack.lastOrNull()
         val step = gameEngine.queueCardEffect(
             card = card,
             overrideEffectType = overrideType
         )
+        val queued = step.updatedState.effectStack.lastOrNull()
+        val matchKey = match?.id ?: "local_tabletop"
+        telemetryTracker.recordCardActivated(card, matchId = matchKey)
+        if (previousLink != null && queued != null) {
+            val interactionKind = if (queued.effectType == CardEffectType.NEGATE_AND_COUNTER) {
+                CardInteractionType.COUNTER_NEGATED
+            } else {
+                CardInteractionType.CHAIN_RESPONSE
+            }
+            telemetryTracker.recordCardInteraction(
+                type = interactionKind,
+                source = card,
+                target = previousLink.sourceCard,
+                phase = step.updatedState.currentPhase.code,
+                baseVariantId = step.updatedState.baseVariantId,
+                sampleLogLine = step.latestLogLine
+            )
+        }
         _statusBanner.value = step.latestLogLine
         if (match != null && match.status != "FINISHED") {
             recordMatchActionLog(match, step.latestLogLine)
@@ -1697,7 +1744,24 @@ class NexusTcgViewModel(
      * resulting LP/Life, stat buffs, card draws, mana ramp, or unit removals with Firestore.
      */
     fun resolveNextStackEffect(match: MatchSession? = null) {
+        val topBefore = gameEngine.state.value.effectStack.lastOrNull()
+        val oppBefore = gameEngine.state.value.opponentFieldUnits.firstOrNull()
         val step = gameEngine.resolveNextEffect()
+        val matchKey = match?.id ?: "local_tabletop"
+        if (topBefore != null) {
+            if (topBefore.effectType == CardEffectType.DIRECT_DAMAGE_BURN) {
+                telemetryTracker.recordCardActivated(topBefore.sourceCard, damageDealt = topBefore.effectValue, matchId = matchKey)
+            } else if (topBefore.effectType == CardEffectType.TARGET_DESTROY_REMOVAL && oppBefore != null) {
+                telemetryTracker.recordCardDestroyed(oppBefore, destroyedBy = topBefore.sourceCard, phase = step.updatedState.currentPhase.code)
+            }
+        }
+        step.drawnCards.forEach { telemetryTracker.recordCardDrawn(it, matchKey) }
+        if (step.updatedState.status == "FINISHED") {
+            telemetryTracker.recordMatchOutcome(
+                hostWon = step.updatedState.opponentLife <= 0L,
+                matchId = matchKey
+            )
+        }
         if (step.drawnCards.isNotEmpty()) {
             _playerHand.value = step.updatedState.handCards
         }
@@ -1729,7 +1793,19 @@ class NexusTcgViewModel(
      * board state and action log with Firestore.
      */
     fun resolveFullEffectStack(match: MatchSession? = null) {
+        val stackBefore = gameEngine.state.value.effectStack.toList()
         val step = gameEngine.resolveAllEffects()
+        val matchKey = match?.id ?: "local_tabletop"
+        stackBefore.filter { it.effectType == CardEffectType.DIRECT_DAMAGE_BURN }.forEach { item ->
+            telemetryTracker.recordCardActivated(item.sourceCard, damageDealt = item.effectValue, matchId = matchKey)
+        }
+        step.drawnCards.forEach { telemetryTracker.recordCardDrawn(it, matchKey) }
+        if (step.updatedState.status == "FINISHED") {
+            telemetryTracker.recordMatchOutcome(
+                hostWon = step.updatedState.opponentLife <= 0L,
+                matchId = matchKey
+            )
+        }
         if (step.drawnCards.isNotEmpty()) {
             _playerHand.value = step.updatedState.handCards
         }
@@ -1956,6 +2032,21 @@ class NexusTcgViewModel(
             }
             _playerHand.value = updatedHand
 
+            telemetryTracker.recordCardPlayed(card, match.turnNumber, match.id)
+            val existingAllies = match.hostBoardCards.map { CardTemplate.fromBoardDescriptor(it, match.baseVariantId) }
+            existingAllies.lastOrNull()?.let { ally ->
+                if (ally.id != card.id) {
+                    telemetryTracker.recordCardInteraction(
+                        type = CardInteractionType.COMBO_SYNERGY,
+                        source = card,
+                        target = ally,
+                        phase = match.activePhase,
+                        baseVariantId = match.baseVariantId,
+                        sampleLogLine = "${card.name} (${card.cardOrigin.badgeLabel}) deployed alongside ${ally.name} (${ally.cardOrigin.badgeLabel})."
+                    )
+                }
+            }
+
             val newResources = (match.hostResources - card.cost).coerceAtLeast(0L)
             val newBoard = (match.hostBoardCards + card.toBoardDescriptor()).take(12)
             val uiProfile = BuiltInTcgCatalog.systemUiProfileFor(match.baseVariantId)
@@ -2027,10 +2118,31 @@ class NexusTcgViewModel(
             }
             val newHostLife = (match.hostLife - counterDamage).coerceAtLeast(0L)
 
+            // Record real combat telemetry for active host attackers vs opponent defenders
+            val leadDefender = oppUnits.firstOrNull()
+            hostUnits.forEachIndexed { idx, attacker ->
+                val shareDmg = if (idx == 0) damageToOpponent.toLong() else 0L
+                val defeatedDef = leadDefender != null && attacker.attack >= leadDefender.attack
+                val lostClash = leadDefender != null && attacker.attack < leadDefender.attack && idx == 0
+                telemetryTracker.recordCardAttacked(
+                    attacker = attacker,
+                    damageDealt = shareDmg,
+                    defender = if (idx == 0) leadDefender else null,
+                    defenderDestroyed = defeatedDef,
+                    attackerDestroyed = lostClash,
+                    phase = "COMBAT",
+                    baseVariantId = match.baseVariantId,
+                    logLine = "Turn ${match.turnNumber} Combat: ${attacker.name} (${attacker.attack} ATK) clashed for $shareDmg dmg."
+                )
+            }
+
             val nextTurn = match.turnNumber + 1L
             val nextMaxRes = (match.hostMaxResources + 1L).coerceAtMost(baseSpec.maxResourcePool)
 
             val isFinished = newOpponentLife <= 0L || newHostLife <= 0L
+            if (isFinished) {
+                telemetryTracker.recordMatchOutcome(hostWon = newOpponentLife <= 0L, matchId = match.id)
+            }
             val nextStatus = if (isFinished) "FINISHED" else "ACTIVE"
             val winner = when {
                 newOpponentLife <= 0L -> currentUserName
@@ -2050,6 +2162,7 @@ class NexusTcgViewModel(
 
             val drawnCard = BuiltInTcgCatalog.cardsForVariant(match.baseVariantId).random()
             _playerHand.value = (_playerHand.value + drawnCard).take(8)
+            telemetryTracker.recordCardDrawn(drawnCard, match.id)
 
             repository.updateMatchState(
                 matchId = match.id,

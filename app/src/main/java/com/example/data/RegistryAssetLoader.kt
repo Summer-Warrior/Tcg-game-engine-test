@@ -22,8 +22,11 @@ data class FederatedCardPack(
     val packName: String,
     val targetClientId: String,
     val upstreamSourceLock: Boolean,
-    val cards: List<ImportedMpvCard>
-)
+    val cards: List<ImportedMpvCard>,
+    val splitOff: SplitOffSetMetadata? = null
+) {
+    val isSplitOffSet: Boolean get() = splitOff != null
+}
 
 data class WikiEntry(
     val id: String,
@@ -260,7 +263,8 @@ object RegistryAssetLoader {
                         packName = report.packName,
                         targetClientId = packObj.optString("targetClientId", "ULTIMATE_TCG_WIP"),
                         upstreamSourceLock = false,
-                        cards = report.acceptedCards
+                        cards = report.acceptedCards,
+                        splitOff = report.splitOffMetadata
                     )
                 )
             }

@@ -61,18 +61,27 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.DeleteSweep
 import com.example.data.AlignmentCheckReport
 import com.example.data.AlignmentHealthState
+import com.example.data.CardOrigin
 import com.example.data.CodeStringExporter
 import com.example.data.CustomDeck
 import com.example.data.FederatedCardPack
 import com.example.data.ImportedMpvCard
 import com.example.data.NexusHubBridgeService
+import com.example.data.telemetry.CustomCardUsageReportSnapshot
 import com.example.engine.CatalogBlueprint
 import com.example.ui.components.TwentyColorPieAtlasView
+import com.example.ui.theme.CardOriginBadge
 import com.example.ui.theme.CrimsonAlert
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldReady
 import com.example.ui.theme.RadiantGold
+import com.example.ui.theme.duelDiskPlate
+import com.example.ui.theme.rememberChamferedDuelShape
 import com.example.viewmodel.UiState
 import kotlinx.coroutines.launch
 
@@ -101,7 +110,10 @@ fun CardVaultAtlasScreen(
     onTestImportedCardOnTabletop: (ImportedMpvCard) -> Unit,
     onAddPulledCardPacks: (List<FederatedCardPack>) -> Unit,
     onRerunStartupAlignment: () -> Unit,
-    onStatusMessage: (String) -> Unit
+    onStatusMessage: (String) -> Unit,
+    telemetrySnapshot: CustomCardUsageReportSnapshot = CustomCardUsageReportSnapshot(),
+    onSendUsageReportToCardMaker: () -> Unit = {},
+    onArchiveResetTelemetry: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -144,18 +156,33 @@ fun CardVaultAtlasScreen(
 
         when (activeSubTab) {
             0 -> {
-                // Card Library
+                // Card Library with Fan-Fiction & Split-Off Sets filter + Canon/AU/OC origin badges
                 var libraryQuery by rememberSaveable { mutableStateOf("") }
-                val allCards = remember(federatedCardPacks, libraryQuery) {
+                var splitOffOnlyFilter by rememberSaveable { mutableStateOf(false) }
+                var originFilter by rememberSaveable { mutableStateOf("ALL") }
+
+                val visiblePacks = remember(federatedCardPacks, splitOffOnlyFilter) {
+                    if (splitOffOnlyFilter) federatedCardPacks.filter { it.isSplitOffSet }
+                    else federatedCardPacks
+                }
+                val splitOffPacks = remember(federatedCardPacks) {
+                    federatedCardPacks.filter { it.isSplitOffSet }
+                }
+
+                val allCards = remember(visiblePacks, libraryQuery, originFilter) {
                     val q = libraryQuery.trim().lowercase()
-                    federatedCardPacks.flatMap { pack ->
-                        pack.cards.map { pack.packName to it }
-                    }.filter { (packName, card) ->
-                        q.isEmpty() ||
+                    visiblePacks.flatMap { pack ->
+                        pack.cards.map { pack to it }
+                    }.filter { (pack, card) ->
+                        val originOk = originFilter == "ALL" || card.cardOrigin.wireValue == originFilter
+                        val qOk = q.isEmpty() ||
                             card.name.lowercase().contains(q) ||
                             card.cardId.lowercase().contains(q) ||
                             card.targetClientId.lowercase().contains(q) ||
-                            packName.lowercase().contains(q)
+                            card.linkedCanonCardId.lowercase().contains(q) ||
+                            pack.packName.lowercase().contains(q) ||
+                            (pack.splitOff?.splitOffTitle?.lowercase()?.contains(q) == true)
+                        originOk && qOk
                     }
                 }
 
@@ -165,63 +192,195 @@ fun CardVaultAtlasScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     item {
-                        OutlinedTextField(
-                            value = libraryQuery,
-                            onValueChange = { libraryQuery = it },
-                            placeholder = { Text("Filter by card name, 21-digit ID, or target client...") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = libraryQuery,
+                                onValueChange = { libraryQuery = it },
+                                placeholder = { Text("Filter by card name, 21-digit ID, split-off set, or canon link...") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("vault_library_search_input")
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                FilterChip(
+                                    selected = !splitOffOnlyFilter,
+                                    onClick = { splitOffOnlyFilter = false },
+                                    label = { Text("All Packs (${federatedCardPacks.size})", style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.testTag("vault_filter_all_packs")
+                                )
+                                FilterChip(
+                                    selected = splitOffOnlyFilter,
+                                    onClick = { splitOffOnlyFilter = true },
+                                    label = { Text("Fan-Fiction & Split-Off Sets (${splitOffPacks.size})", style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.testTag("vault_filter_split_off_sets")
+                                )
+                                listOf(
+                                    "ALL" to "Any Origin",
+                                    CardOrigin.CANON_ORIGINAL.wireValue to "Canon Original",
+                                    CardOrigin.FAN_ALTERNATE_VARIANT.wireValue to "AU Variant",
+                                    CardOrigin.ORIGINAL_OC_CARD.wireValue to "Fan-Fiction OC"
+                                ).forEach { (key, label) ->
+                                    FilterChip(
+                                        selected = originFilter == key,
+                                        onClick = { originFilter = key },
+                                        label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                    )
+                                }
+                            }
+                        }
                     }
 
-                    items(allCards, key = { (_, c) -> "${c.targetClientId}_${c.cardId}" }) { (packName, card) ->
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
+                    // Split-Off Set Lineage Banner Cards
+                    if (splitOffPacks.isNotEmpty() && (splitOffOnlyFilter || libraryQuery.isBlank())) {
+                        items(splitOffPacks, key = { "splitoff_banner_${it.packId}" }) { pack ->
+                            val meta = pack.splitOff ?: return@items
+                            val canonCount = pack.cards.count { it.cardOrigin == CardOrigin.CANON_ORIGINAL }
+                            val auCount = pack.cards.count { it.cardOrigin == CardOrigin.FAN_ALTERNATE_VARIANT }
+                            val ocCount = pack.cards.count { it.cardOrigin == CardOrigin.ORIGINAL_OC_CARD }
                             Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .duelDiskPlate(accentColor = RadiantGold, cutSize = 12.dp, pulseEnergy = true)
+                                    .padding(14.dp)
+                                    .testTag("split_off_set_banner_${meta.splitOffId}"),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(card.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "FAN-FICTION SPLIT-OFF SET • ${meta.splitOffKind}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = RadiantGold
+                                        )
+                                        Text(
+                                            text = meta.splitOffTitle,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    val pillShape = rememberChamferedDuelShape(6.dp)
                                     Text(
-                                        text = card.pipCost,
+                                        text = "100% CANON RETAINED",
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontFamily = FontFamily.Monospace,
-                                        color = RadiantGold,
                                         fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.labelMedium
+                                        color = EmeraldReady,
+                                        modifier = Modifier
+                                            .clip(pillShape)
+                                            .background(EmeraldReady.copy(alpha = 0.16f))
+                                            .border(1.dp, EmeraldReady, pillShape)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
                                 Text(
-                                    text = "ID: ${card.cardId} • Target: ${card.targetClientId} • Pack: $packName",
+                                    text = "Parent Official Set: ${meta.parentOfficialSetName} (${meta.parentOfficialSetId}) • Target: ${pack.targetClientId}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = ElectricCyan
                                 )
                                 Text(
-                                    text = "ATK ${card.atk21} / DEF ${card.def21} • ${card.cardType} • ${card.effectType}",
+                                    text = "Roster: $canonCount Canon Originals intact • $auCount AU Variants • $ocCount Fan-Fiction OCs",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Text(card.ability, style = MaterialTheme.typography.bodySmall)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
+                                if (meta.canonDivergenceNotes.isNotBlank()) {
+                                    Text(
+                                        text = meta.canonDivergenceNotes,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    items(allCards, key = { (pack, c) -> "${pack.packId}_${c.targetClientId}_${c.cardId}" }) { (pack, card) ->
+                        val cardAccent = when (card.cardOrigin) {
+                            CardOrigin.CANON_ORIGINAL -> EmeraldReady
+                            CardOrigin.FAN_ALTERNATE_VARIANT -> ElectricCyan
+                            CardOrigin.ORIGINAL_OC_CARD -> Color(0xFFE040FB)
+                        }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .duelDiskPlate(accentColor = cardAccent, cutSize = 10.dp)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = card.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = card.pipCost,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = RadiantGold,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                CardOriginBadge(
+                                    origin = card.cardOrigin,
+                                    linkedCanonCardId = card.linkedCanonCardId
+                                )
+                                if (pack.isSplitOffSet) {
+                                    Text(
+                                        text = "SPLIT-OFF: ${pack.splitOff?.splitOffTitle ?: pack.packName}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = RadiantGold
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "ID: ${card.cardId} • Target: ${card.targetClientId} • Pack: ${pack.packName}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "ATK ${card.atk21} / DEF ${card.def21} • ${card.cardType} • ${card.effectType}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(card.ability, style = MaterialTheme.typography.bodySmall)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onTestImportedCardOnTabletop(card) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("test_card_on_tabletop_${card.cardId}")
                                 ) {
-                                    OutlinedButton(
-                                        onClick = { onTestImportedCardOnTabletop(card) },
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Test on Tabletop", style = MaterialTheme.typography.labelSmall)
-                                    }
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Test on Tabletop", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -471,6 +630,176 @@ fun CardVaultAtlasScreen(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text("Pull MPV Card Packs")
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // Live Custom Card Usage & Interaction Telemetry (v1.0.0 — Real Data Only)
+                    item {
+                        val canonTracked = telemetrySnapshot.cards.count { it.cardOrigin == CardOrigin.CANON_ORIGINAL }
+                        val auTracked = telemetrySnapshot.cards.count { it.cardOrigin == CardOrigin.FAN_ALTERNATE_VARIANT }
+                        val ocTracked = telemetrySnapshot.cards.count { it.cardOrigin == CardOrigin.ORIGINAL_OC_CARD }
+                        val usageJson = remember(telemetrySnapshot) { telemetrySnapshot.toJsonString() }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .duelDiskPlate(accentColor = ElectricCyan, cutSize = 12.dp, pulseEnergy = telemetrySnapshot.hasRealTelemetry)
+                                .padding(14.dp)
+                                .testTag("bridge_usage_telemetry_card"),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Analytics, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = "Custom Card Usage & Interaction Telemetry",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Text(
+                                    text = "v${telemetrySnapshot.schemaVersion}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = RadiantGold,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Text(
+                                text = "Real match tracking only (zero fake stats). Tracks Canon Originals vs. AU Variants vs. Fan-Fiction OC performance & interactions back to Card Maker (${NexusHubBridgeService.CARD_MAKER_ANDROID_PACKAGE}).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Text(
+                                text = "Matches: ${telemetrySnapshot.totalMatchesTracked} • Cards: ${telemetrySnapshot.cards.size} (Canon $canonTracked / AU $auTracked / OC $ocTracked) • Plays: ${telemetrySnapshot.totalPlaysRecorded} • Interactions: ${telemetrySnapshot.totalInteractionsRecorded} • Archived: ${telemetrySnapshot.archivedReportCount}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (telemetrySnapshot.hasRealTelemetry) EmeraldReady else RadiantGold
+                            )
+
+                            if (telemetrySnapshot.cards.isEmpty()) {
+                                Text(
+                                    text = "No gameplay telemetry recorded yet — draw, deploy, chain, or battle cards on the Tabletop to log real metrics.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                telemetrySnapshot.cards.take(4).forEach { m ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${m.cardName} (${m.cardOrigin.wireValue})",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            text = "P:${m.timesPlayed} Act:${m.timesActivated} Atk:${m.timesAttacked} W:${m.winsWhenPlayed}/L:${m.lossesWhenPlayed}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = ElectricCyan
+                                        )
+                                    }
+                                }
+                                if (telemetrySnapshot.interactions.isNotEmpty()) {
+                                    Text(
+                                        text = "Top Interaction: ${telemetrySnapshot.interactions.first().let { "${it.sourceCardName} [${it.interactionType.displayLabel}] ${it.targetCardName} ×${it.occurrenceCount}" }}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = RadiantGold
+                                    )
+                                }
+                            }
+
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = onSendUsageReportToCardMaker,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = ElectricCyan,
+                                        contentColor = Color(0xFF060A12)
+                                    ),
+                                    modifier = Modifier.testTag("bridge_send_usage_report_button")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Send Usage Report to Card Maker", fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    enabled = !isBusy,
+                                    onClick = {
+                                        isBusy = true
+                                        scope.launch {
+                                            val result = NexusHubBridgeService.pushUsageReportToGitHub(
+                                                reportJson = usageJson,
+                                                branch = cardMakerBranch,
+                                                fineGrainedPat = runtimePat,
+                                                mutualLinkVerified = mutualVerified
+                                            )
+                                            bridgeLog = result.message
+                                            onStatusMessage(result.message)
+                                            isBusy = false
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("bridge_push_usage_report_github_button")
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Push Report to GitHub", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        clipboard.setText(AnnotatedString(usageJson))
+                                        onStatusMessage("Copied card-usage-report.json (${telemetrySnapshot.cards.size} cards) to clipboard.")
+                                    },
+                                    modifier = Modifier.testTag("bridge_copy_usage_report_button")
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Copy JSON", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        NexusHubBridgeService.shareTextArtifact(
+                                            context = context,
+                                            title = "card-usage-report.json",
+                                            content = usageJson,
+                                            mimeType = "application/json"
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("bridge_share_usage_report_button")
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Share .json", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                OutlinedButton(
+                                    onClick = onArchiveResetTelemetry,
+                                    modifier = Modifier.testTag("bridge_archive_reset_telemetry_button")
+                                ) {
+                                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Archive & Reset", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }

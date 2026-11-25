@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,12 +27,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.GridOn
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -59,6 +62,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -73,6 +77,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -81,38 +87,56 @@ import androidx.compose.ui.unit.dp
 import com.example.data.BigInt21Engine
 import com.example.data.BuiltInTcgCatalog
 import com.example.data.CardEffectType
+import com.example.data.CardOrigin
 import com.example.data.CardTemplate
 import com.example.data.ClientNode
 import com.example.data.GameEngine
 import com.example.data.GameEngineState
 import com.example.data.MatchGameEvent
 import com.example.data.MatchSession
+import com.example.data.NexusHubBridgeService
 import com.example.data.RealtimeGameSyncState
 import com.example.data.SerializedGameBoardState
 import com.example.data.SerializedZonePlacement
 import com.example.data.SyncClientSeat
 import com.example.data.TcgVariant
 import com.example.data.TurnPhase
+import com.example.data.telemetry.CustomCardUsageReportSnapshot
 import com.example.engine.BoardArchetypeTemplate
 import com.example.engine.CatalogBlueprint
-import com.example.ui.components.AnimatedSyncedHealthBarCard
+import com.example.ui.components.AttackImpactVfxEvent
+import com.example.ui.components.BossSummonCutInEvent
 import com.example.ui.components.CanvasGameBoard
+import com.example.ui.components.DuelDiskLpCounterBar
+import com.example.ui.components.DuelVfxOverlay
+import com.example.ui.components.IlluminatedDuelDiskPhaseStrip
 import com.example.ui.components.PersistentGameEventLogCard
+import com.example.ui.components.PhaseSweepBannerEvent
 import com.example.ui.components.RealtimeGameStateSyncPanel
+import com.example.ui.components.TcgVisualModuleOverlay
+import com.example.ui.theme.CardOriginBadge
 import com.example.ui.theme.CrimsonAlert
+import com.example.ui.theme.DuelArenaAtmosphere
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldReady
+import com.example.ui.theme.FoilFinishStyle
+import com.example.ui.theme.HolographicArenaFloorCanvas
 import com.example.ui.theme.RadiantGold
+import com.example.ui.theme.chameleonAccentFor
+import com.example.ui.theme.duelDiskPlate
+import com.example.ui.theme.foilShimmerOverlay
+import com.example.ui.theme.rememberChamferedDuelShape
 import com.example.viewmodel.UiState
 
 private enum class TabletopDrawer(val label: String) {
-    EVENT_LOG("Event Log"),
+    EVENT_LOG("Event Log & Telemetry"),
     CHAIN_STACK("LIFO Chain"),
     CALC_21("21-Digit Calc"),
     SENSORS("Sensors & Tiers"),
     VG_MECHANICS("VG Mechanics"),
     SYNC_HUB("Firestore Sync"),
     DUAL_CHAT("IC / OOC Chat"),
-    ARENA_HOSTING("Format & Arena")
+    ARENA_HOSTING("Format & Atmosphere")
 }
 
 private enum class ChatChannelMode(val label: String) {
@@ -122,11 +146,16 @@ private enum class ChatChannelMode(val label: String) {
 }
 
 /**
- * Section 3: Consolidated Playmat-First Tabletop (~80%+ viewport).
+ * Section 3: ONE Consolidated Playmat-First Solid Vision Tabletop (~80%+ viewport).
  *
- * Replaces duplicated multi-widget boards with ONE unified playmat backed by a single state,
- * a fanned Hand Dock with card zoom + foil sheen, a compact Dual-Chamber Vitality/Phase strip,
- * and slide-over `ModalBottomSheet` drawers for secondary telemetry and mechanics.
+ * - Yu-Gi-Oh! Anime / Manga / Video-Game Core Foundation:
+ *   * Chamfered Battle City Duel Disk Rolling LP Counter (single source of truth — zero duplicate HP bars)
+ *   * Illuminated Duel Disk Phase Strip (`DP -> SP -> MP1 -> BP -> MP2 -> EP`)
+ *   * Solid Vision 3D Perspective Toggle over animated Holographic Arena Floor (7 switchable Atmospheres)
+ *   * Boss Summon Cut-In Banner, Chain Link Spiral (`CL1->CL2->CL3`), Phase Sweep, Attack Plasma Beam
+ *   * Fanned Interactive Hand Dock with Foil Shimmer (`Royal Finish`/`Prismatic`/`Manga Rare`/`Starlight`)
+ * - Dynamically layers signature flourishes from ALL other TCGs via `TcgVisualModuleOverlay`.
+ * - Integrates live Custom Card Usage Telemetry reporting directly back to Card Maker.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -139,6 +168,7 @@ fun TabletopArenaScreen(
     playerHand: List<CardTemplate>,
     syncedBoardState: SerializedGameBoardState? = null,
     gameEngineState: GameEngineState = GameEngine.createInitialState(selectedBaseVariantId),
+    telemetrySnapshot: CustomCardUsageReportSnapshot = CustomCardUsageReportSnapshot(),
     onSelectMatch: (String) -> Unit,
     onLaunchMatch: (String) -> Unit,
     onBridgeClientsIntoMatch: (MatchSession) -> Unit,
@@ -176,15 +206,36 @@ fun TabletopArenaScreen(
     onLogQuickLifeReduction: (Long) -> Unit = {},
     onLogCustomGameEvent: (String) -> Unit = {},
     activeFormatBlueprint: CatalogBlueprint? = null,
-    onRecordIcMemorialEntry: (String) -> Unit = {}
+    onRecordIcMemorialEntry: (String) -> Unit = {},
+    onSendUsageReportToCardMaker: () -> Unit = {},
+    onStatusMessage: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val density = LocalDensity.current.density
     val matches = (matchesState as? UiState.Success)?.data.orEmpty()
     val currentMatch = matches.firstOrNull { it.id == activeMatchId } ?: matches.firstOrNull()
     val effectiveBaseId = currentMatch?.baseVariantId ?: selectedBaseVariantId
     val uiProfile = BuiltInTcgCatalog.systemUiProfileFor(effectiveBaseId, activeClientNode)
+    val baseSpec = BuiltInTcgCatalog.findBaseSpec(effectiveBaseId)
     val activeArchetype = BoardArchetypeTemplate.fromId(
         activeFormatBlueprint?.boardArchetype ?: "zone-rows"
     )
+    val chameleonAccent = chameleonAccentFor(activeFormatBlueprint, effectiveBaseId)
+
+    // Solid Vision 3D Perspective & Arena Atmosphere state
+    var solidVision3dEnabled by rememberSaveable { mutableStateOf(false) }
+    var arenaAtmosphereName by rememberSaveable(activeFormatBlueprint?.id, effectiveBaseId) {
+        mutableStateOf(DuelArenaAtmosphere.defaultForBlueprint(activeFormatBlueprint, effectiveBaseId).name)
+    }
+    val activeAtmosphere = remember(arenaAtmosphereName) {
+        DuelArenaAtmosphere.entries.firstOrNull { it.name == arenaAtmosphereName }
+            ?: DuelArenaAtmosphere.BATTLE_CITY_STADIUM
+    }
+    var activeFoilStyleName by rememberSaveable { mutableStateOf(FoilFinishStyle.ROYAL_FINISH.name) }
+    val activeFoilStyle = remember(activeFoilStyleName) {
+        FoilFinishStyle.entries.firstOrNull { it.name == activeFoilStyleName }
+            ?: FoilFinishStyle.ROYAL_FINISH
+    }
 
     // Arena Hosting & Format State
     var arenaHostingMode by rememberSaveable { mutableStateOf("Native Universe") }
@@ -215,14 +266,32 @@ fun TabletopArenaScreen(
     var chatDraft by rememberSaveable { mutableStateOf("") }
     val chatFeed = remember {
         mutableStateListOf(
-            Triple(ChatChannelMode.IC_MEMORIAL, "Tabletop Arbiter", "Playmat synchronized for ${activeFormatBlueprint?.name ?: uiProfile.systemTitle}."),
+            Triple(ChatChannelMode.IC_MEMORIAL, "Tabletop Arbiter", "Solid Vision Playmat synchronized for ${activeFormatBlueprint?.name ?: uiProfile.systemTitle}."),
             Triple(ChatChannelMode.OOC_RULING, "Judge", "LIFO Chain & strict zero-time-travel match rules active.")
         )
+    }
+
+    // Live VFX State (Boss Cut-In, Phase Sweep, Attack Plasma Beam)
+    var activeBossCutIn by remember { mutableStateOf<BossSummonCutInEvent?>(null) }
+    var activePhaseBanner by remember { mutableStateOf<PhaseSweepBannerEvent?>(null) }
+    var activeAttackImpact by remember { mutableStateOf<AttackImpactVfxEvent?>(null) }
+    var lastObservedPhase by remember { mutableStateOf(gameEngineState.currentPhase) }
+
+    LaunchedEffect(gameEngineState.currentPhase, gameEngineState.turnNumber) {
+        if (gameEngineState.currentPhase != lastObservedPhase) {
+            lastObservedPhase = gameEngineState.currentPhase
+            activePhaseBanner = PhaseSweepBannerEvent(
+                phaseTitle = gameEngineState.currentPhase.displayName,
+                phaseCode = gameEngineState.clientPhaseCode,
+                turnNumber = gameEngineState.turnNumber
+            )
+        }
     }
 
     // Active Drawer + Modals
     var openDrawer by remember { mutableStateOf<TabletopDrawer?>(null) }
     var zoomedHandCard by remember { mutableStateOf<CardTemplate?>(null) }
+    var zoomedCardDefenseRotated by remember { mutableStateOf(false) }
     var showNewMatchDialog by remember { mutableStateOf(false) }
     var newMatchTitle by remember { mutableStateOf("") }
 
@@ -232,21 +301,44 @@ fun TabletopArenaScreen(
     val opponentUnits = remember(currentMatch?.opponentBoardCards, effectiveBaseId) {
         currentMatch?.opponentBoardCards.orEmpty().map { CardTemplate.fromBoardDescriptor(it, effectiveBaseId) }
     }
-    val effectiveHostLife = if (realtimeGameSyncState.isAttached) realtimeGameSyncState.hostLife else (currentMatch?.hostLife ?: 8000L)
-    val effectiveOpponentLife = if (realtimeGameSyncState.isAttached) realtimeGameSyncState.opponentLife else (currentMatch?.opponentLife ?: 8000L)
+    val effectiveHostLife = if (realtimeGameSyncState.isAttached) realtimeGameSyncState.hostLife else (currentMatch?.hostLife ?: gameEngineState.hostLife)
+    val effectiveOpponentLife = if (realtimeGameSyncState.isAttached) realtimeGameSyncState.opponentLife else (currentMatch?.opponentLife ?: gameEngineState.opponentLife)
+    val isMatchFinished = currentMatch?.status == "FINISHED" || gameEngineState.status == "FINISHED"
+    val matchWinnerLabel = currentMatch?.winnerName?.ifBlank { gameEngineState.winnerName } ?: gameEngineState.winnerName
+
+    val perspectiveTilt by animateFloatAsState(
+        targetValue = if (solidVision3dEnabled) 18f else 0f,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 260f),
+        label = "solidVisionTilt"
+    )
+
+    fun fireSummonVfxIfAce(card: CardTemplate) {
+        if (card.attack >= 2000 || card.cost >= 4 || card.cardOrigin != CardOrigin.CANON_ORIGINAL) {
+            activeBossCutIn = BossSummonCutInEvent(
+                cardName = card.name,
+                cardType = card.cardType,
+                atkText = card.attack21,
+                defText = card.defense21,
+                origin = card.cardOrigin,
+                linkedCanonCardId = card.linkedCanonCardId,
+                accentColor = chameleonAccent
+            )
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color(0xFF050A14))
             .testTag("unified_tabletop_screen")
     ) {
-        // 1. Compact Top Toolbar: Format/Archetype Pill + Drawer Chips
+        // 1. Compact Duel Disk Top Toolbar: Format/Atmosphere + 3D Solid Vision Toggle + Drawers
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(Color(0xFF0A1120))
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -255,7 +347,7 @@ fun TabletopArenaScreen(
                 onClick = { openDrawer = TabletopDrawer.ARENA_HOSTING },
                 label = {
                     Text(
-                        text = "${activeFormatBlueprint?.name?.take(18) ?: uiProfile.hudBadgeLabel} • ${if (is3dGridOverlay) "3D Grid" else "2D Mat"}",
+                        text = activeFormatBlueprint?.name?.take(16) ?: uiProfile.hudBadgeLabel,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -263,71 +355,106 @@ fun TabletopArenaScreen(
                 leadingIcon = { Icon(Icons.Default.GridOn, contentDescription = null, modifier = Modifier.size(14.dp)) },
                 modifier = Modifier.testTag("tabletop_format_chip")
             )
-            DrawerChip("Sync", Icons.Default.Sync, openDrawer == TabletopDrawer.SYNC_HUB) { openDrawer = TabletopDrawer.SYNC_HUB }
-            DrawerChip("Log", Icons.Default.History, openDrawer == TabletopDrawer.EVENT_LOG) { openDrawer = TabletopDrawer.EVENT_LOG }
+            FilterChip(
+                selected = solidVision3dEnabled,
+                onClick = { solidVision3dEnabled = !solidVision3dEnabled },
+                label = { Text(if (solidVision3dEnabled) "3D Vision ON" else "3D Vision", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
+                leadingIcon = { Icon(Icons.Default.ViewInAr, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.testTag("tabletop_solid_vision_toggle")
+            )
             DrawerChip("Chain (${gameEngineState.effectStack.size})", Icons.Default.Layers, openDrawer == TabletopDrawer.CHAIN_STACK) { openDrawer = TabletopDrawer.CHAIN_STACK }
+            DrawerChip("Log (${telemetrySnapshot.totalPlaysRecorded})", Icons.Default.History, openDrawer == TabletopDrawer.EVENT_LOG) { openDrawer = TabletopDrawer.EVENT_LOG }
+            DrawerChip("Sync", Icons.Default.Sync, openDrawer == TabletopDrawer.SYNC_HUB) { openDrawer = TabletopDrawer.SYNC_HUB }
             DrawerChip("21d Calc", Icons.Default.Calculate, openDrawer == TabletopDrawer.CALC_21) { openDrawer = TabletopDrawer.CALC_21 }
             DrawerChip("Sensors", Icons.Default.Sensors, openDrawer == TabletopDrawer.SENSORS) { openDrawer = TabletopDrawer.SENSORS }
             DrawerChip("VG Mod", Icons.Default.SportsEsports, openDrawer == TabletopDrawer.VG_MECHANICS) { openDrawer = TabletopDrawer.VG_MECHANICS }
-            DrawerChip("IC/OOC", Icons.Default.Chat, openDrawer == TabletopDrawer.DUAL_CHAT) { openDrawer = TabletopDrawer.DUAL_CHAT }
-        }
-
-        // 2. Compact Vitality & 4-Turn-Phase Strip (Dual-Chamber Magic Pulse & Force Pulse + LP)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "LP $effectiveHostLife vs $effectiveOpponentLife • ${if (outsiderVitalityMode) "Outsider Vitality" else "Magic $magicPulsePct% | Force $forcePulsePct%"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = EmeraldReady,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "$arenaHostingMode • ${activeArchetype.displayLabel} • Phase: ${gameEngineState.currentPhase.displayName} • Turn ${gameEngineState.turnNumber}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(
-                    onClick = { onStepGameEnginePhase(currentMatch) },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.testTag("tabletop_next_phase_button")
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Next Phase", modifier = Modifier.size(14.dp))
-                    Text("Phase", style = MaterialTheme.typography.labelSmall)
-                }
-                OutlinedButton(
-                    onClick = { showNewMatchDialog = true },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.testTag("tabletop_new_match_button")
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "New Match", modifier = Modifier.size(14.dp))
-                    Text("Room", style = MaterialTheme.typography.labelSmall)
-                }
+            DrawerChip("IC/OOC", Icons.AutoMirrored.Filled.Chat, openDrawer == TabletopDrawer.DUAL_CHAT) { openDrawer = TabletopDrawer.DUAL_CHAT }
+            OutlinedButton(
+                onClick = { showNewMatchDialog = true },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.testTag("tabletop_new_match_button")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "New Match", modifier = Modifier.size(14.dp))
+                Text("Room", style = MaterialTheme.typography.labelSmall)
             }
         }
 
-        // 3. UNIFIED PLAYMAT VIEWPORT (~80% height — single CanvasGameBoard backed by single state)
+        // 2. Iconic Anime/Manga Rolling LP Counter Bar (Single source of truth — ZERO duplicate HP bars)
+        DuelDiskLpCounterBar(
+            hostName = currentMatch?.hostName ?: "Commander",
+            opponentName = currentMatch?.connectedClients?.firstOrNull() ?: "Peer Client",
+            hostLife = effectiveHostLife,
+            opponentLife = effectiveOpponentLife,
+            startingLife = baseSpec.startingLife,
+            turnNumber = gameEngineState.turnNumber,
+            activePhaseCode = gameEngineState.clientPhaseCode,
+            accentColor = chameleonAccent
+        )
+
+        // 3. Illuminated Duel Disk Phase Strip (`DP -> SP -> MP1 -> BP -> MP2 -> EP`)
+        IlluminatedDuelDiskPhaseStrip(
+            activePhase = gameEngineState.currentPhase,
+            accentColor = chameleonAccent,
+            onSelectPhase = { phase ->
+                onSelectGameEnginePhase(phase, currentMatch)
+                activePhaseBanner = PhaseSweepBannerEvent(
+                    phaseTitle = phase.displayName,
+                    phaseCode = phase.clientPhaseCodeFor(effectiveBaseId),
+                    turnNumber = gameEngineState.turnNumber
+                )
+            }
+        )
+
+        // Post-Match Summary + Direct "Send Usage Report to Card Maker" Banner when duel finishes
+        if (isMatchFinished) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .duelDiskPlate(accentColor = RadiantGold, secondaryColor = EmeraldReady, cutSize = 8.dp, pulseEnergy = true)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag("post_match_summary_banner"),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "DUEL COMPLETE • WINNER: ${matchWinnerLabel.ifBlank { "Commander" }}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Black,
+                        color = RadiantGold
+                    )
+                    Text(
+                        text = "Tracked ${telemetrySnapshot.cards.size} card(s), ${telemetrySnapshot.totalPlaysRecorded} play(s), ${telemetrySnapshot.totalInteractionsRecorded} interaction(s).",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White
+                    )
+                }
+                Button(
+                    onClick = onSendUsageReportToCardMaker,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.testTag("post_match_send_usage_report_button")
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Send Usage Report", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+
+        // 4. ONE UNIFIED SOLID VISION PLAYMAT VIEWPORT (~80% height)
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .background(Color(0xFF070B14))
                 .testTag("tabletop_main_playmat_container")
         ) {
+            // Animated Holographic Arena Floor underneath the unified playmat
+            HolographicArenaFloorCanvas(
+                atmosphere = activeAtmosphere,
+                modifier = Modifier.fillMaxSize()
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -335,77 +462,96 @@ fun TabletopArenaScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Optional 3D Grid / PXZ / Archetype Status Overlay Strip (compact, non-duplicated)
-                if (is3dGridOverlay || activeFormatBlueprint?.id == "ULTIMATE_TCG_WIP" || activeFormatBlueprint?.mechanicModules?.isNotEmpty() == true) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(RadiantGold.copy(alpha = 0.12f))
-                            .border(1.dp, RadiantGold.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (is3dGridOverlay) {
-                                "3D Tactical Grid Overlay ON • PXZ Frontline $pxzFrontlineCount/5 • XP $pxzXpGaugePct% • Tier $activeMaterialTier"
-                            } else {
-                                "PXZ Frontline $pxzFrontlineCount/5 • XP $pxzXpGaugePct%${if (crossHitActive) " • CROSS HIT!" else ""} • Intent: $bossIntentText"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = RadiantGold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                CanvasGameBoard(
-                    uiProfile = uiProfile,
-                    hostName = currentMatch?.hostName ?: "Commander",
-                    opponentName = currentMatch?.connectedClients?.firstOrNull() ?: "Peer Client",
-                    hostLife = effectiveHostLife,
-                    opponentLife = effectiveOpponentLife,
-                    hostUnits = hostUnits,
-                    opponentUnits = opponentUnits,
-                    handCards = playerHand,
-                    turnNumber = gameEngineState.turnNumber,
-                    activePhase = gameEngineState.currentPhase.displayName,
-                    syncedBoardState = syncedBoardState,
-                    onDeployCardFromHand = { card, zoneId ->
-                        if (currentMatch != null) {
-                            onDeployCard(currentMatch, card)
-                        }
-                        onLogQuickCardPlay("${card.name} -> $zoneId")
-                    },
-                    onMoveCardBetweenZones = { card, fromZone, toZone ->
-                        if (currentMatch != null) {
-                            onRecordMatchActionLog(currentMatch, "Moved ${card.name}: $fromZone -> $toZone")
-                        }
-                    },
-                    onAttackOpponentZone = { attacker, targetZone, _ ->
-                        if (currentMatch != null) {
-                            onExecuteCombatAndAdvanceTurn(currentMatch)
-                        }
-                        onLogCustomGameEvent("${attacker.name} declared attack on $targetZone")
-                    },
-                    onDrawCardRequest = { onDrawCard(effectiveBaseId, currentMatch) },
-                    onBroadcastBoardState = { placements, note, actor ->
-                        onBroadcastBoardState(currentMatch, placements, note, actor)
-                    }
+                // Modular TCG Visual Flourish Strip layered cleanly on top of the Yu-Gi-Oh! core
+                TcgVisualModuleOverlay(
+                    blueprint = activeFormatBlueprint,
+                    baseVariantId = effectiveBaseId,
+                    stackDepth = gameEngineState.effectStack.size,
+                    hostUnitCount = hostUnits.size,
+                    opponentUnitCount = opponentUnits.size,
+                    magicPulsePct = magicPulsePct,
+                    forcePulsePct = forcePulsePct,
+                    outsiderVitalityMode = outsiderVitalityMode,
+                    pxzFrontlineCount = pxzFrontlineCount,
+                    pxzXpGaugePct = pxzXpGaugePct,
+                    crossHitActive = crossHitActive,
+                    bossIntentText = bossIntentText,
+                    programAdvanceReady = programAdvanceReady,
+                    is3dGridOverlay = is3dGridOverlay,
+                    onTriggerQuickFeedback = { msg -> onStatusMessage(msg) }
                 )
+
+                // ONE single CanvasGameBoard with optional Solid Vision 3D Perspective tilt
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            rotationX = perspectiveTilt
+                            cameraDistance = 14f * density
+                        }
+                ) {
+                    CanvasGameBoard(
+                        uiProfile = uiProfile,
+                        hostName = currentMatch?.hostName ?: "Commander",
+                        opponentName = currentMatch?.connectedClients?.firstOrNull() ?: "Peer Client",
+                        hostLife = effectiveHostLife,
+                        opponentLife = effectiveOpponentLife,
+                        hostUnits = hostUnits,
+                        opponentUnits = opponentUnits,
+                        handCards = playerHand,
+                        turnNumber = gameEngineState.turnNumber,
+                        activePhase = gameEngineState.currentPhase.displayName,
+                        syncedBoardState = syncedBoardState,
+                        onDeployCardFromHand = { card, zoneId ->
+                            fireSummonVfxIfAce(card)
+                            if (currentMatch != null) {
+                                onDeployCard(currentMatch, card)
+                            }
+                            onLogQuickCardPlay("${card.name} -> $zoneId")
+                        },
+                        onMoveCardBetweenZones = { card, fromZone, toZone ->
+                            if (currentMatch != null) {
+                                onRecordMatchActionLog(currentMatch, "Moved ${card.name}: $fromZone -> $toZone")
+                            }
+                        },
+                        onAttackOpponentZone = { attacker, targetZone, _ ->
+                            activeAttackImpact = AttackImpactVfxEvent(
+                                attackerName = attacker.name,
+                                targetLabel = targetZone,
+                                damageCallout = "-${attacker.attack} LP!"
+                            )
+                            if (currentMatch != null) {
+                                onExecuteCombatAndAdvanceTurn(currentMatch)
+                            }
+                            onLogCustomGameEvent("${attacker.name} declared attack on $targetZone")
+                        },
+                        onDrawCardRequest = { onDrawCard(effectiveBaseId, currentMatch) },
+                        onBroadcastBoardState = { placements, note, actor ->
+                            onBroadcastBoardState(currentMatch, placements, note, actor)
+                        }
+                    )
+                }
             }
+
+            // Live Non-Blocking Duel VFX Overlay (Chain Link Spiral, Boss Cut-In, Phase Sweep, Attack Beam)
+            DuelVfxOverlay(
+                effectStack = gameEngineState.effectStack,
+                bossCutIn = activeBossCutIn,
+                phaseBanner = activePhaseBanner,
+                attackImpact = activeAttackImpact,
+                onDismissBossCutIn = { activeBossCutIn = null },
+                onDismissPhaseBanner = { activePhaseBanner = null },
+                onDismissAttackImpact = { activeAttackImpact = null }
+            )
         }
 
-        // 4. Fanned Hand Dock with Card Zoom & Holographic Foil Sheen
+        // 5. Fanned Interactive Hand Dock with Holographic Foil Sheen & Quick Duel Actions
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .background(Color(0xFF0A1120))
+                .border(1.dp, chameleonAccent.copy(alpha = 0.45f))
+                .padding(horizontal = 8.dp, vertical = 5.dp)
                 .testTag("tabletop_fanned_hand_dock"),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -415,25 +561,47 @@ fun TabletopArenaScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Hand Dock (${playerHand.size}) • Tap card to zoom/play",
+                    text = "Hand (${playerHand.size}) • ${activeFoilStyle.label} • ${activeAtmosphere.badgeTag}",
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = chameleonAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    OutlinedButton(
+                        onClick = { onStepGameEnginePhase(currentMatch) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.testTag("tabletop_next_phase_button")
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "Next Phase", modifier = Modifier.size(13.dp))
+                        Text("Step", style = MaterialTheme.typography.labelSmall)
+                    }
                     OutlinedButton(
                         onClick = { onDrawCard(effectiveBaseId, currentMatch) },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         modifier = Modifier.testTag("hand_dock_draw_button")
                     ) {
                         Text("Draw", style = MaterialTheme.typography.labelSmall)
                     }
                     if (currentMatch != null) {
                         Button(
-                            onClick = { onExecuteCombatAndAdvanceTurn(currentMatch) },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            onClick = {
+                                val lead = hostUnits.firstOrNull()
+                                activeAttackImpact = AttackImpactVfxEvent(
+                                    attackerName = lead?.name ?: "Duelist Vanguard",
+                                    targetLabel = "Opponent LP",
+                                    damageCallout = "-${lead?.attack ?: 1800} LP!"
+                                )
+                                onExecuteCombatAndAdvanceTurn(currentMatch)
+                            },
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 2.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = CrimsonAlert, contentColor = Color.White),
                             modifier = Modifier.testTag("hand_dock_combat_button")
                         ) {
-                            Text("Combat / End", style = MaterialTheme.typography.labelSmall)
+                            Text("Battle!", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black)
                         }
                     }
                 }
@@ -441,27 +609,32 @@ fun TabletopArenaScreen(
 
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(vertical = 2.dp)
+                contentPadding = PaddingValues(vertical = 3.dp)
             ) {
                 items(playerHand.indices.toList(), key = { idx -> "${playerHand[idx].id}_$idx" }) { idx ->
                     val card = playerHand[idx]
-                    val fanTilt = ((idx - (playerHand.size - 1) / 2f) * 2.5f).coerceIn(-8f, 8f)
+                    val fanTilt = ((idx - (playerHand.size - 1) / 2f) * 2.8f).coerceIn(-9f, 9f)
+                    val cardShape = rememberChamferedDuelShape(7.dp)
                     Box(
                         modifier = Modifier
-                            .width(126.dp)
+                            .width(134.dp)
                             .graphicsLayer { rotationZ = fanTilt }
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(cardShape)
                             .background(
                                 Brush.linearGradient(
                                     listOf(
-                                        Color(0xFF141B2D),
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
-                                        Color(0xFF1A142E)
+                                        Color(0xFF10192D),
+                                        chameleonAccent.copy(alpha = 0.22f),
+                                        Color(0xFF1C1333)
                                     )
                                 )
                             )
-                            .border(1.2.dp, RadiantGold.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
-                            .clickable { zoomedHandCard = card }
+                            .foilShimmerOverlay(style = activeFoilStyle, intensity = 0.24f)
+                            .border(1.3.dp, RadiantGold.copy(alpha = 0.8f), cardShape)
+                            .clickable {
+                                zoomedCardDefenseRotated = false
+                                zoomedHandCard = card
+                            }
                             .padding(8.dp)
                             .testTag("hand_card_${card.id}")
                     ) {
@@ -469,21 +642,27 @@ fun TabletopArenaScreen(
                             Text(
                                 text = card.name,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.ExtraBold,
                                 color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                text = "${card.cardType} • Cost ${card.cost}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = RadiantGold,
-                                maxLines = 1
-                            )
+                            if (card.cardOrigin != CardOrigin.CANON_ORIGINAL) {
+                                CardOriginBadge(origin = card.cardOrigin, linkedCanonCardId = card.linkedCanonCardId)
+                            } else {
+                                Text(
+                                    text = "${card.cardType} • C${card.cost}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = RadiantGold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                             Text(
                                 text = "ATK ${card.attack} / DEF ${card.defense}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
                                 color = Color(0xFFBAE6FD)
                             )
                         }
@@ -493,42 +672,68 @@ fun TabletopArenaScreen(
         }
     }
 
-    // Card Zoom Preview Dialog with Foil Sheen
+    // Card Zoom Preview Modal with Foil Sheen, Origin Badge & Smooth 90° Defense/Tapped Rotation
     zoomedHandCard?.let { card ->
+        val cardRotation by animateFloatAsState(
+            targetValue = if (zoomedCardDefenseRotated) 90f else 0f,
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 240f),
+            label = "cardDefenseRotate"
+        )
         AlertDialog(
             onDismissRequest = { zoomedHandCard = null },
-            title = { Text(card.name, fontWeight = FontWeight.Bold) },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(card.name, fontWeight = FontWeight.Black)
+                    CardOriginBadge(origin = card.cardOrigin, linkedCanonCardId = card.linkedCanonCardId)
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(
-                                        Color(0xFF0E172A),
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                                        RadiantGold.copy(alpha = 0.22f)
-                                    )
-                                )
-                            )
-                            .border(1.5.dp, RadiantGold, RoundedCornerShape(14.dp))
+                            .graphicsLayer { rotationZ = cardRotation * 0.12f }
+                            .duelDiskPlate(accentColor = chameleonAccent, secondaryColor = RadiantGold, cutSize = 10.dp)
+                            .foilShimmerOverlay(style = activeFoilStyle, intensity = 0.30f)
                             .padding(14.dp)
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(card.cardType, style = MaterialTheme.typography.labelSmall, color = RadiantGold, fontWeight = FontWeight.Bold)
-                            Text("ATK ${card.attack} / DEF ${card.defense} • Cost ${card.cost}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
-                            Text("V2 Wire: ${card.toV2BoardDescriptor()}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = "${card.cardType} • ${if (zoomedCardDefenseRotated) "DEFENSE / TAPPED (90°)" else "ATTACK / UNTAPPED (0°)"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = RadiantGold,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "ATK ${card.attack21} / DEF ${card.defense21} • Cost ${card.cost} • ${card.pipCost}",
+                                fontFamily = FontFamily.Monospace,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White
+                            )
+                            if (card.splitOffSetId.isNotBlank()) {
+                                Text(
+                                    text = "Split-Off Set: ${card.splitOffSetId} (Parent: ${card.parentOfficialSetId})",
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ElectricCyan
+                                )
+                            }
                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                            Text(card.abilityText, style = MaterialTheme.typography.bodySmall)
+                            Text(card.abilityText, style = MaterialTheme.typography.bodySmall, color = Color(0xFFE2E8F0))
                         }
+                    }
+                    OutlinedButton(
+                        onClick = { zoomedCardDefenseRotated = !zoomedCardDefenseRotated },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (zoomedCardDefenseRotated) "Switch to Attack / Untap (0°)" else "Switch to Defense / Tap (90°)")
                     }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
+                        fireSummonVfxIfAce(card)
                         if (currentMatch != null) {
                             onDeployCard(currentMatch, card)
                         }
@@ -536,7 +741,7 @@ fun TabletopArenaScreen(
                         zoomedHandCard = null
                     }
                 ) {
-                    Text("Deploy to Mat")
+                    Text("Summon / Deploy")
                 }
             },
             dismissButton = {
@@ -563,17 +768,39 @@ fun TabletopArenaScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 540.dp)
+                    .heightIn(max = 560.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(drawer.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(drawer.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
 
                 when (drawer) {
                     TabletopDrawer.ARENA_HOSTING -> {
-                        Text("Arena Hosting Mode:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text("Solid Vision Arena Atmosphere (7 Holographic Floors):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = RadiantGold)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DuelArenaAtmosphere.entries.forEach { atmo ->
+                                FilterChip(
+                                    selected = activeAtmosphere == atmo,
+                                    onClick = { arenaAtmosphereName = atmo.name },
+                                    label = { Text(atmo.displayName, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+
+                        Text("Card Foil Finish:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = ElectricCyan)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FoilFinishStyle.entries.forEach { style ->
+                                FilterChip(
+                                    selected = activeFoilStyle == style,
+                                    onClick = { activeFoilStyleName = style.name },
+                                    label = { Text(style.label, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+
+                        Text("Arena Hosting Mode (${activeArchetype.displayLabel}):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("Native Universe", "Off-World Morphing Grid", "Out-of-Game Card Invocation").forEach { mode ->
                                 FilterChip(
@@ -588,7 +815,15 @@ fun TabletopArenaScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("3D Grid Overlay (on top of 2D Mat)", style = MaterialTheme.typography.bodySmall)
+                            Text("Solid Vision 3D Perspective Tilt", style = MaterialTheme.typography.bodySmall)
+                            Switch(checked = solidVision3dEnabled, onCheckedChange = { solidVision3dEnabled = it })
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("3D Combat Positioning Grid Overlay", style = MaterialTheme.typography.bodySmall)
                             Switch(checked = is3dGridOverlay, onCheckedChange = { is3dGridOverlay = it })
                         }
                         Row(
@@ -623,6 +858,38 @@ fun TabletopArenaScreen(
                     }
 
                     TabletopDrawer.EVENT_LOG -> {
+                        // Real Live Card Usage & Interaction Telemetry Card + 1-Tap Send to Card Maker
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .duelDiskPlate(accentColor = ElectricCyan, secondaryColor = RadiantGold, cutSize = 8.dp)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "LIVE CARD USAGE & INTERACTION TELEMETRY (v${telemetrySnapshot.schemaVersion})",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black,
+                                color = RadiantGold
+                            )
+                            Text(
+                                text = "Matches: ${telemetrySnapshot.totalMatchesTracked} • Tracked Cards: ${telemetrySnapshot.cards.size} • Real Plays: ${telemetrySnapshot.totalPlaysRecorded} • Card Interactions: ${telemetrySnapshot.totalInteractionsRecorded}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = onSendUsageReportToCardMaker,
+                                    modifier = Modifier.testTag("drawer_send_usage_report_button")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Send Usage Report to Card Maker")
+                                }
+                            }
+                        }
+
                         val events = (persistentEventsState as? UiState.Success)?.data.orEmpty()
                         PersistentGameEventLogCard(
                             matchId = currentMatch?.id ?: realtimeGameSyncState.matchId.ifBlank { "local_tabletop" },
@@ -650,7 +917,7 @@ fun TabletopArenaScreen(
                             gameEngineState.effectStack.reversed().forEachIndexed { idx, item ->
                                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                                     Column(modifier = Modifier.padding(10.dp)) {
-                                        Text("Link #${gameEngineState.effectStack.size - idx}: ${item.sourceCard.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                        Text("CL${gameEngineState.effectStack.size - idx}: ${item.sourceCard.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                                         Text("${item.effectType.name} • ${item.targetDescription}", style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
@@ -713,12 +980,6 @@ fun TabletopArenaScreen(
                     }
 
                     TabletopDrawer.SYNC_HUB -> {
-                        AnimatedSyncedHealthBarCard(
-                            syncState = realtimeGameSyncState,
-                            fallbackHostLife = effectiveHostLife,
-                            fallbackOpponentLife = effectiveOpponentLife,
-                            onQuickAdjustLife = onAdjustSyncedLifePoints
-                        )
                         RealtimeGameStateSyncPanel(
                             syncState = realtimeGameSyncState,
                             onSelectSeat = onSelectSyncSeat,
@@ -807,7 +1068,7 @@ fun TabletopArenaScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        onLaunchMatch(newMatchTitle.trim().ifEmpty { "${uiProfile.hudBadgeLabel} Arena" })
+                        onLaunchMatch(newMatchTitle.trim().ifEmpty { "${activeFormatBlueprint?.name ?: uiProfile.systemTitle} Room" })
                         newMatchTitle = ""
                         showNewMatchDialog = false
                     }
@@ -840,7 +1101,10 @@ private fun DrawerChip(
 @Composable
 private fun SensorBar(label: String, value: Float, onValueChange: (Float) -> Unit) {
     Column {
-        Text("$label: ${(value * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.labelSmall)
+            Text("${(value * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
+        }
         Slider(value = value, onValueChange = onValueChange, valueRange = 0f..1f)
     }
 }

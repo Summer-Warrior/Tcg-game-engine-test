@@ -81,8 +81,12 @@ import com.example.engine.BoardArchetypeTemplate
 import com.example.engine.CatalogBlueprint
 import com.example.engine.ComboSynthesizer
 import com.example.ui.theme.CrimsonAlert
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldReady
 import com.example.ui.theme.RadiantGold
+import com.example.ui.theme.chameleonAccentFor
+import com.example.ui.theme.duelDiskPlate
+import com.example.ui.theme.rememberChamferedDuelShape
 
 /**
  * Section 1: Master Hub — 160+ Multi-TCG Catalog Browser, 4-Tier Detail Sheet,
@@ -99,7 +103,9 @@ fun MasterHubScreen(
     onAddSynthesizedCombo: (CatalogBlueprint) -> Unit,
     onOpenSeparateClientWindow: (String) -> Unit,
     onOpenHandshakeArea: () -> Unit,
-    onStatusMessage: (String) -> Unit
+    onStatusMessage: (String) -> Unit,
+    splitOffSetCount: Int = 0,
+    trackedUsagePlays: Int = 0
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -145,22 +151,29 @@ fun MasterHubScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Hero Spotlight + MPV Handshake Pill
+        // Hero Spotlight + MPV Handshake Pill (Battle City Chamfered Duel Disk Chrome)
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            val activeBlueprint = remember(catalogBlueprints, activeFormatBlueprintId) {
+                catalogBlueprints.firstOrNull { it.id == activeFormatBlueprintId }
+            }
+            val heroAccent = chameleonAccentFor(activeBlueprint, activeFormatBlueprintId)
+            val heroPillShape = rememberChamferedDuelShape(6.dp)
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
+                    .duelDiskPlate(
+                        accentColor = heroAccent,
+                        cutSize = 14.dp,
+                        pulseEnergy = true
+                    )
             ) {
                 Column(
                     modifier = Modifier
                         .background(
                             Brush.linearGradient(
                                 listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                                    MaterialTheme.colorScheme.surfaceVariant
+                                    heroAccent.copy(alpha = 0.22f),
+                                    Color.Transparent
                                 )
                             )
                         )
@@ -174,9 +187,10 @@ fun MasterHubScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "NEXUS TCG MASTER HUB",
+                                text = "NEXUS TCG MASTER HUB • SOLID VISION v4.0",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                fontFamily = FontFamily.Monospace,
+                                color = heroAccent,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
@@ -184,6 +198,19 @@ fun MasterHubScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
+                            if (splitOffSetCount > 0 || trackedUsagePlays > 0) {
+                                Text(
+                                    text = "$splitOffSetCount Split-Off Set(s) (100% Canon Retained) • $trackedUsagePlays Tracked Card Plays",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = RadiantGold,
+                                    modifier = Modifier
+                                        .padding(top = 4.dp)
+                                        .clip(heroPillShape)
+                                        .background(RadiantGold.copy(alpha = 0.14f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
 
                         val status = alignmentReport?.status

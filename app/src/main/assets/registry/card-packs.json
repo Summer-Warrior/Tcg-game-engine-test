@@ -91,6 +91,86 @@
           "ability": "Bridges Dedicated Pendulum Scale, LIFO Stack resolution, and Twin Drive Checks in Apex Mediated Nexus."
         }
       ]
+    },
+    {
+      "packId": "split_off_battle_city_neon_meridian_01",
+      "packName": "Battle City: Neon Meridian Split-Off (100% Canon Retained)",
+      "targetClientId": "EDOPRO_CUSTOM_FORK",
+      "upstreamSourceLock": false,
+      "splitOffId": "split_battle_city_neon_meridian",
+      "splitOffTitle": "Battle City: Neon Meridian Chronicles (AU Split-Off)",
+      "splitOffKind": "FAN_FICTION_TIMELINE_BRANCH",
+      "parentOfficialSetId": "DM_BATTLE_CITY_CANON",
+      "parentOfficialSetName": "Duel Monsters — Battle City Official Set",
+      "preserveAllOriginalOfficialCards": true,
+      "canonDivergenceNotes": "Branches immediately after the Battle City Finals blimp duel while keeping 100% of original official Battle City canon cards intact and playable alongside alternate-timeline variants and fan-fiction OC duelists.",
+      "cards": [
+        {
+          "cardId": "89631139",
+          "name": "Blue-Eyes White Dragon",
+          "cardType": "Normal Monster / Dragon",
+          "pipCost": "{W}",
+          "atk21": "3000",
+          "def21": "2500",
+          "effectType": "ATK_DEF_BUFF",
+          "temporalEffect": "",
+          "cardOrigin": "CANON_ORIGINAL",
+          "linkedCanonCardId": "",
+          "ability": "Canon Original preserved 100% intact for lore continuity in Battle City: Neon Meridian."
+        },
+        {
+          "cardId": "46986414",
+          "name": "Dark Magician",
+          "cardType": "Normal Monster / Spellcaster",
+          "pipCost": "{B/Vi}",
+          "atk21": "2500",
+          "def21": "2100",
+          "effectType": "DIRECT_DAMAGE_BURN",
+          "temporalEffect": "",
+          "cardOrigin": "CANON_ORIGINAL",
+          "linkedCanonCardId": "",
+          "ability": "Canon Original preserved 100% intact for lore continuity and AU Variant cross-interactions."
+        },
+        {
+          "cardId": "900008963113900000001",
+          "name": "Blue-Eyes Neon Meridian Dragon",
+          "cardType": "Effect / Synchro AU Variant",
+          "pipCost": "{W/Cy}",
+          "atk21": "3600",
+          "def21": "2800",
+          "effectType": "DIRECT_DAMAGE_BURN",
+          "temporalEffect": "",
+          "cardOrigin": "FAN_ALTERNATE_VARIANT",
+          "linkedCanonCardId": "89631139",
+          "ability": "Alternate-Timeline Variant of Blue-Eyes White Dragon (89631139). When summoned alongside a Canon Original Dragon, inflict 1000 plasma damage."
+        },
+        {
+          "cardId": "900004698641400000002",
+          "name": "Dark Magician of the Prism Circuit",
+          "cardType": "Effect / Pendulum AU Variant",
+          "pipCost": "{B/Vi/Cy}",
+          "atk21": "2900",
+          "def21": "2400",
+          "effectType": "NEGATE_AND_COUNTER",
+          "temporalEffect": "End Turn",
+          "cardOrigin": "FAN_ALTERNATE_VARIANT",
+          "linkedCanonCardId": "46986414",
+          "ability": "Alternate-Timeline Variant of Dark Magician (46986414). Quick Effect: Negate the top Chain Link when a Canon Spellcaster is on the field."
+        },
+        {
+          "cardId": "900009900000000000077",
+          "name": "Sora Vance, Neon Meridian Duelist",
+          "cardType": "Fan-Fiction OC Ace Monster",
+          "pipCost": "{Cy/Am}",
+          "atk21": "2800",
+          "def21": "2200",
+          "effectType": "DRAW_CARDS",
+          "temporalEffect": "",
+          "cardOrigin": "ORIGINAL_OC_CARD",
+          "linkedCanonCardId": "",
+          "ability": "Original OC Duelist of the Neon Meridian Split-Off. On Chain Link 2+, draw 1 card and boost all Canon Original allies by +500 ATK."
+        }
+      ]
     }
   ]
 }

@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -47,8 +49,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -107,6 +111,7 @@ import com.example.ui.screens.TabletopArenaScreen
 import com.example.ui.theme.EmeraldReady
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.RadiantGold
+import com.example.ui.theme.chameleonAccentFor
 import com.example.viewmodel.NexusTcgViewModel
 import com.example.viewmodel.UiState
 import com.google.firebase.Firebase
@@ -289,6 +294,10 @@ fun NexusTcgMainScreen(
     var alignmentReport by remember { mutableStateOf<AlignmentCheckReport?>(null) }
     var showAlignmentPopup by remember { mutableStateOf(false) }
 
+    LaunchedEffect(context) {
+        viewModel.attachTelemetryContext(context)
+    }
+
     LaunchedEffect(Unit) {
         val report = StartupAlignmentChecker.runStartupCheck(context)
         alignmentReport = report
@@ -324,6 +333,18 @@ fun NexusTcgMainScreen(
     val playerHand by viewModel.playerHand.collectAsStateWithLifecycle()
     val lastHandshakeDiagnostic by viewModel.lastHandshakeDiagnostic.collectAsStateWithLifecycle()
     val vmStatusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
+    val telemetrySnapshot by viewModel.telemetrySnapshot.collectAsStateWithLifecycle()
+
+    val chameleonAccent by animateColorAsState(
+        targetValue = chameleonAccentFor(activeFormatBlueprint, selectedBaseVariantId),
+        label = "chameleonAccent"
+    )
+
+    val sendUsageReportToCardMaker: () -> Unit = {
+        val reportJson = telemetrySnapshot.toJsonString()
+        val result = NexusHubBridgeService.sendUsageReportToCardMaker(context, reportJson)
+        localBannerMessage = result.statusMessage
+    }
 
     val activeBanner = localBannerMessage ?: vmStatusBanner
     val activeBaseSpec = BuiltInTcgCatalog.findBaseSpec(selectedBaseVariantId)
@@ -345,104 +366,126 @@ fun NexusTcgMainScreen(
             Scaffold(
                 contentWindowInsets = WindowInsets.safeDrawing,
                 topBar = {
-                    TopAppBar(
-                        title = {
-                            Column {
-                                Text(
-                                    text = stringResource(id = R.string.app_name),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(
-                                                color = if (activeFormatBlueprint?.upstreamSourceLock == true) EmeraldReady else RadiantGold,
-                                                shape = CircleShape
-                                            )
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        TopAppBar(
+                            title = {
+                                Column {
                                     Text(
-                                        text = activeFormatBlueprint?.name ?: activeUiProfile.systemTitle,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        text = stringResource(id = R.string.app_name),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
-                                }
-                            }
-                        },
-                        actions = {
-                            IconButton(
-                                onClick = { isRulesetInspectorOpen = !isRulesetInspectorOpen },
-                                modifier = Modifier.testTag("top_inspector_debug_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.BugReport,
-                                    contentDescription = "Toggle Floating Ruleset & Protocol Inspector",
-                                    tint = if (isRulesetInspectorOpen) RadiantGold else MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    pendingClientLaunch = PendingClientLaunchSelection(
-                                        client = activeClientNode,
-                                        baseVariantId = selectedBaseVariantId,
-                                        activeMatchId = activeMatchId,
-                                        sourceLabel = "Top Bar Launch"
-                                    )
-                                },
-                                modifier = Modifier.testTag("open_active_client_window_top_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.DesktopWindows,
-                                    contentDescription = "Open Active Client Window",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    signOut(credentialManager = credentialManager, scope = scope)
-                                },
-                                modifier = Modifier.testTag("sign_out_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Logout,
-                                    contentDescription = stringResource(id = R.string.sign_out),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        )
-                    )
-                },
-                bottomBar = {
-                    if (!isExpanded) {
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                            NexusSection.entries.forEach { section ->
-                                val selected = currentSection == section
-                                NavigationBarItem(
-                                    selected = selected,
-                                    onClick = { currentSection = section },
-                                    icon = {
-                                        Icon(
-                                            imageVector = if (selected) section.selectedIcon else section.unselectedIcon,
-                                            contentDescription = stringResource(id = section.labelResId)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(
+                                                    color = if (activeFormatBlueprint?.upstreamSourceLock == true) EmeraldReady else chameleonAccent,
+                                                    shape = CircleShape
+                                                )
                                         )
-                                    },
-                                    label = {
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = stringResource(id = section.labelResId),
+                                            text = activeFormatBlueprint?.name ?: activeUiProfile.systemTitle,
                                             style = MaterialTheme.typography.labelSmall,
+                                            color = chameleonAccent,
+                                            fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                    }
+                                }
+                            },
+                            actions = {
+                                IconButton(
+                                    onClick = { isRulesetInspectorOpen = !isRulesetInspectorOpen },
+                                    modifier = Modifier.testTag("top_inspector_debug_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.BugReport,
+                                        contentDescription = "Toggle Floating Ruleset & Protocol Inspector",
+                                        tint = if (isRulesetInspectorOpen) RadiantGold else chameleonAccent
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        pendingClientLaunch = PendingClientLaunchSelection(
+                                            client = activeClientNode,
+                                            baseVariantId = selectedBaseVariantId,
+                                            activeMatchId = activeMatchId,
+                                            sourceLabel = "Top Bar Launch"
+                                        )
                                     },
-                                    modifier = Modifier.testTag("nav_tab_${section.routeId}")
-                                )
+                                    modifier = Modifier.testTag("open_active_client_window_top_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DesktopWindows,
+                                        contentDescription = "Open Active Client Window",
+                                        tint = chameleonAccent
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        signOut(credentialManager = credentialManager, scope = scope)
+                                    },
+                                    modifier = Modifier.testTag("sign_out_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                                        contentDescription = stringResource(id = R.string.sign_out),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            )
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(chameleonAccent.copy(alpha = 0.65f))
+                        )
+                    }
+                },
+                bottomBar = {
+                    if (!isExpanded) {
+                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.5.dp)
+                                    .background(chameleonAccent.copy(alpha = 0.55f))
+                            )
+                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                                NexusSection.entries.forEach { section ->
+                                    val selected = currentSection == section
+                                    NavigationBarItem(
+                                        selected = selected,
+                                        onClick = { currentSection = section },
+                                        icon = {
+                                            Icon(
+                                                imageVector = if (selected) section.selectedIcon else section.unselectedIcon,
+                                                contentDescription = stringResource(id = section.labelResId)
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                text = stringResource(id = section.labelResId),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = chameleonAccent,
+                                            selectedTextColor = chameleonAccent,
+                                            indicatorColor = chameleonAccent.copy(alpha = 0.18f)
+                                        ),
+                                        modifier = Modifier.testTag("nav_tab_${section.routeId}")
+                                    )
+                                }
                             }
                         }
                     }
@@ -475,6 +518,11 @@ fun NexusTcgMainScreen(
                                             style = MaterialTheme.typography.labelSmall
                                         )
                                     },
+                                    colors = NavigationRailItemDefaults.colors(
+                                        selectedIconColor = chameleonAccent,
+                                        selectedTextColor = chameleonAccent,
+                                        indicatorColor = chameleonAccent.copy(alpha = 0.18f)
+                                    ),
                                     modifier = Modifier.testTag("rail_tab_${section.routeId}")
                                 )
                             }
@@ -560,7 +608,9 @@ fun NexusTcgMainScreen(
                                             vaultSubTab = 4
                                             currentSection = NexusSection.VAULT
                                         },
-                                        onStatusMessage = { localBannerMessage = it }
+                                        onStatusMessage = { localBannerMessage = it },
+                                        splitOffSetCount = allCardPacks.count { it.isSplitOffSet },
+                                        trackedUsagePlays = telemetrySnapshot.totalPlaysRecorded
                                     )
                                 }
 
@@ -581,11 +631,14 @@ fun NexusTcgMainScreen(
                                         onDeleteDeck = { viewModel.deleteDeck(it) },
                                         onBroadcastDeckToDiscord = { viewModel.broadcastDeckSummaryToDiscord(it) },
                                         onTestImportedCardOnTabletop = { card ->
+                                            val parentPack = allCardPacks.firstOrNull { pack ->
+                                                pack.cards.any { it.cardId == card.cardId && it.targetClientId == card.targetClientId }
+                                            }
                                             val template = CardTemplate(
                                                 id = card.cardId,
                                                 passcode = card.cardId.filter { it.isDigit() }.ifBlank { "89631139" },
                                                 name = card.name,
-                                                baseVariantId = selectedBaseVariantId,
+                                                baseVariantId = card.targetClientId.ifBlank { selectedBaseVariantId },
                                                 cardType = card.cardType,
                                                 cost = 1,
                                                 attack = card.atk21.toIntOrNull() ?: 3000,
@@ -593,12 +646,15 @@ fun NexusTcgMainScreen(
                                                 attack21 = card.atk21,
                                                 defense21 = card.def21,
                                                 abilityText = "${card.pipCost} • ${card.ability}",
-                                                artResId = R.drawable.ic_launcher_foreground
+                                                artResId = R.drawable.ic_launcher_foreground,
+                                                cardOrigin = card.cardOrigin,
+                                                linkedCanonCardId = card.linkedCanonCardId,
+                                                splitOffSetId = parentPack?.splitOff?.splitOffId.orEmpty(),
+                                                parentOfficialSetId = parentPack?.splitOff?.parentOfficialSetId.orEmpty(),
+                                                pipCost = card.pipCost
                                             )
-                                            if (currentActiveMatch != null) {
-                                                viewModel.deployCardToBattlefield(currentActiveMatch, template)
-                                            }
-                                            localBannerMessage = "Sent '${card.name}' (${card.pipCost}) to Tabletop!"
+                                            viewModel.addImportedCardToHandAndTrack(template, currentActiveMatch)
+                                            localBannerMessage = "Sent '${card.name}' (${card.cardOrigin.wireValue}) to Tabletop & live telemetry!"
                                             currentSection = NexusSection.TABLETOP
                                         },
                                         onAddPulledCardPacks = { packs ->
@@ -618,7 +674,13 @@ fun NexusTcgMainScreen(
                                                 localBannerMessage = fresh.summaryMessage
                                             }
                                         },
-                                        onStatusMessage = { localBannerMessage = it }
+                                        onStatusMessage = { localBannerMessage = it },
+                                        telemetrySnapshot = telemetrySnapshot,
+                                        onSendUsageReportToCardMaker = sendUsageReportToCardMaker,
+                                        onArchiveResetTelemetry = {
+                                            viewModel.archiveAndResetTelemetry()
+                                            localBannerMessage = "Archived & reset local Card Usage Telemetry counters."
+                                        }
                                     )
                                 }
 
@@ -681,7 +743,10 @@ fun NexusTcgMainScreen(
                                         onLogQuickLifeReduction = { viewModel.logQuickLifeReductionEvent(it) },
                                         onLogCustomGameEvent = { viewModel.logCustomGameEvent(it) },
                                         activeFormatBlueprint = activeFormatBlueprint,
-                                        onRecordIcMemorialEntry = { entry -> icMemorialFeed.add(0, entry) }
+                                        onRecordIcMemorialEntry = { entry -> icMemorialFeed.add(0, entry) },
+                                        telemetrySnapshot = telemetrySnapshot,
+                                        onSendUsageReportToCardMaker = sendUsageReportToCardMaker,
+                                        onStatusMessage = { localBannerMessage = it }
                                     )
                                 }
 
@@ -689,7 +754,8 @@ fun NexusTcgMainScreen(
                                     LoreAvatarsMemorialScreen(
                                         wikis = registryBundle.wikis,
                                         icFeedEntries = icMemorialFeed.toList(),
-                                        onStatusMessage = { localBannerMessage = it }
+                                        onStatusMessage = { localBannerMessage = it },
+                                        federatedCardPacks = allCardPacks
                                     )
                                 }
 

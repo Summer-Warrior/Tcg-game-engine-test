@@ -29,6 +29,10 @@
     ]
   },
   "lockedClientFirewallRule": "STRICT_EXCLUDE_UPSTREAM_SOURCE_LOCK_TRUE_FROM_WRITABLE_EXPORTS",
+  "requiredCapabilities": [
+    "CUSTOM_CARD_USAGE_TELEMETRY_V1",
+    "SPLIT_OFF_CANON_PRESERVATION_V1"
+  ],
   "cardMakerConsent": {
     "repo": "Summer-Warrior/MPV-TCG-Card-Making-Software-Updated",
     "packageName": "com.aistudio.tcgstudio.kqrmvx",
@@ -42,7 +46,7 @@
     "packageName": "com.aistudio.nexustcg.vxqrmk",
     "consentedSchemaVersion": "1.1.0",
     "consented": true,
-    "recordedBy": "NexusTCG Engine v3.0",
+    "recordedBy": "NexusTCG Engine v4.0",
     "recordedAtUtc": "2026-11-23T00:00:00Z"
   }
 }

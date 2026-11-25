@@ -439,7 +439,12 @@ data class CardTemplate(
     val attack21: String = attack.toString(),
     val defense21: String = defense.toString(),
     val abilityText: String,
-    val artResId: Int
+    val artResId: Int,
+    val cardOrigin: CardOrigin = CardOrigin.CANON_ORIGINAL,
+    val linkedCanonCardId: String = "",
+    val splitOffSetId: String = "",
+    val parentOfficialSetId: String = "",
+    val pipCost: String = TwentyColorPieCatalog.COLORLESS_PIP
 ) {
     fun toBoardDescriptor(): String =
         "${sanitizeField(name)}|$cost|$attack|$defense|${sanitizeField(cardType)}|${sanitizeField(abilityText)}"

@@ -1,12 +1,16 @@
 package com.example.data
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Base64
+import androidx.core.content.FileProvider
 import com.example.engine.CatalogBlueprint
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -108,12 +112,14 @@ object NexusHubBridgeService {
     const val CARD_MAKER_ANDROID_PACKAGE = "com.aistudio.tcgstudio.kqrmvx"
     const val CARD_MAKER_DEEP_LINK_BASE = "tcgstudio://nexus-hub"
     const val CARD_MAKER_DEEP_LINK_SYNC = "tcgstudio://nexus-hub?hubSync=1&from=nexustcg"
+    const val CARD_MAKER_DEEP_LINK_USAGE_REPORT = "tcgstudio://nexus-hub?importUsageReport=1&from=nexustcg"
     const val CARD_MAKER_WEB_URL = "https://summer-warrior.github.io/MPV-TCG-Card-Making-Software-Updated/"
 
     const val HUB_INDEX_PATH = "client-codestring-index.json"
     const val MIRROR_INDEX_PATH = "nexus-bridge/client-codestring-index.json"
     const val HANDSHAKE_CONTRACT_PATH = "handshake-contract.json"
     const val EXPORTED_PACKS_DIR = "nexus-bridge/card-packs/"
+    const val USAGE_REPORTS_DIR = "nexus-bridge/usage-reports/"
 
     private const val PREFS_CONSENT = "nexus_tcg_dual_consent_prefs"
     private const val KEY_ENGINE_CONSENTED = "engine_consented"
@@ -212,6 +218,118 @@ object NexusHubBridgeService {
             } else {
                 "Could not launch browser for $webUrl."
             }
+        )
+    }
+
+    /**
+     * Sends a `CustomCardUsageReport` v1.0.0 JSON directly to the private Android Play Store
+     * install of MPV Card Maker (`com.aistudio.tcgstudio.kqrmvx`) via
+     * `tcgstudio://nexus-hub?importUsageReport=1&from=nexustcg` with a FileProvider JSON URI
+     * and automatic clipboard fallback. Never uses any Google Play Store URL.
+     */
+    fun sendUsageReportToCardMaker(
+        context: Context,
+        reportJson: String
+    ): MasterHubLaunchResult {
+        // Always stage a clipboard fallback so Card Maker or Web Portal can paste instantaneously
+        runCatching {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            cm?.setPrimaryClip(ClipData.newPlainText("card-usage-report.json", reportJson))
+        }
+
+        val reportUri: Uri? = runCatching {
+            val dir = File(context.cacheDir, "telemetry_reports").apply { mkdirs() }
+            val file = File(dir, "card-usage-report.json")
+            file.writeText(reportJson, Charsets.UTF_8)
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        }.getOrNull()
+
+        val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse(CARD_MAKER_DEEP_LINK_USAGE_REPORT)).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra("importUsageReport", "1")
+            putExtra("from", "nexustcg")
+            putExtra("sourceRepo", THIS_REPO)
+            putExtra("usageReportJson", reportJson)
+            if (reportUri != null) {
+                putExtra(Intent.EXTRA_STREAM, reportUri)
+                putExtra("usageReportUri", reportUri.toString())
+                clipData = ClipData.newUri(context.contentResolver, "card-usage-report.json", reportUri)
+                runCatching {
+                    context.grantUriPermission(
+                        CARD_MAKER_ANDROID_PACKAGE,
+                        reportUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+        }
+        if (deepLinkIntent.resolveActivity(context.packageManager) != null &&
+            runCatching { context.startActivity(deepLinkIntent) }.isSuccess
+        ) {
+            return MasterHubLaunchResult(
+                launchedNativeApp = true,
+                launchedUrlOrUri = CARD_MAKER_DEEP_LINK_USAGE_REPORT,
+                statusMessage = "Sent CustomCardUsageReport to installed Card Maker ($CARD_MAKER_ANDROID_PACKAGE) + copied JSON to clipboard."
+            )
+        }
+
+        val pkgLaunch = context.packageManager.getLaunchIntentForPackage(CARD_MAKER_ANDROID_PACKAGE)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra("importUsageReport", "1")
+            putExtra("from", "nexustcg")
+            putExtra("usageReportJson", reportJson)
+            if (reportUri != null) {
+                putExtra(Intent.EXTRA_STREAM, reportUri)
+                putExtra("usageReportUri", reportUri.toString())
+            }
+        }
+        if (pkgLaunch != null && runCatching { context.startActivity(pkgLaunch) }.isSuccess) {
+            return MasterHubLaunchResult(
+                launchedNativeApp = true,
+                launchedUrlOrUri = CARD_MAKER_ANDROID_PACKAGE,
+                statusMessage = "Opened Card Maker ($CARD_MAKER_ANDROID_PACKAGE) with Usage Report + clipboard fallback."
+            )
+        }
+
+        val webUrl = "$CARD_MAKER_WEB_URL?importUsageReport=1&from=nexustcg"
+        val webOk = runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(webUrl)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        }.isSuccess
+        return MasterHubLaunchResult(
+            launchedNativeApp = false,
+            launchedUrlOrUri = webUrl,
+            statusMessage = if (webOk) {
+                "Card Maker app not installed locally; copied Usage Report JSON to clipboard & opened Web Portal."
+            } else {
+                "Copied Usage Report JSON to clipboard (install Card Maker or open Web Portal to import)."
+            }
+        )
+    }
+
+    suspend fun pushUsageReportToGitHub(
+        reportJson: String,
+        branch: String = "main",
+        fineGrainedPat: String,
+        mutualLinkVerified: Boolean,
+        targetOwnerRepo: String = LINKED_CARD_MAKER
+    ): GitHubCommitResult {
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
+        val filePath = "${USAGE_REPORTS_DIR}report-$stamp.json"
+        return commitFileToGitHubRepo(
+            ownerRepo = targetOwnerRepo,
+            branch = branch,
+            filePath = filePath,
+            contentUtf8 = reportJson,
+            commitMessage = "chore(telemetry): push CustomCardUsageReport v1.0.0 ($stamp)",
+            fineGrainedPat = fineGrainedPat,
+            mutualLinkVerified = mutualLinkVerified
         )
     }
 
@@ -461,7 +579,8 @@ object NexusHubBridgeService {
                             packName = report.packName,
                             targetClientId = rootObj?.optString("targetClientId", "ULTIMATE_TCG_WIP") ?: "ULTIMATE_TCG_WIP",
                             upstreamSourceLock = false,
-                            cards = report.acceptedCards
+                            cards = report.acceptedCards,
+                            splitOff = report.splitOffMetadata
                         )
                     )
                 }

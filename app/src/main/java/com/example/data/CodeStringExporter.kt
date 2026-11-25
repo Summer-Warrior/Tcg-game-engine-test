@@ -31,6 +31,30 @@ data class ExportableClientSpec(
     val attributes: List<String> = emptyList()
 )
 
+enum class CardOrigin(val wireValue: String, val badgeLabel: String) {
+    CANON_ORIGINAL("CANON_ORIGINAL", "CANON ORIGINAL"),
+    FAN_ALTERNATE_VARIANT("FAN_ALTERNATE_VARIANT", "AU VARIANT"),
+    ORIGINAL_OC_CARD("ORIGINAL_OC_CARD", "FAN-FICTION OC");
+
+    companion object {
+        fun fromRaw(raw: String?): CardOrigin {
+            val normalized = raw?.trim()?.uppercase().orEmpty()
+            return entries.firstOrNull { it.wireValue == normalized || it.name == normalized }
+                ?: CANON_ORIGINAL
+        }
+    }
+}
+
+data class SplitOffSetMetadata(
+    val splitOffId: String,
+    val splitOffTitle: String,
+    val splitOffKind: String,
+    val parentOfficialSetId: String,
+    val parentOfficialSetName: String,
+    val preserveAllOriginalOfficialCards: Boolean,
+    val canonDivergenceNotes: String
+)
+
 data class ImportedMpvCard(
     val cardId: String,
     val name: String,
@@ -41,16 +65,24 @@ data class ImportedMpvCard(
     val def21: String,
     val effectType: String,
     val temporalEffect: String,
-    val ability: String
+    val ability: String,
+    val cardOrigin: CardOrigin = CardOrigin.CANON_ORIGINAL,
+    val linkedCanonCardId: String = "",
+    val splitOffSetId: String = "",
+    val parentOfficialSetId: String = ""
 )
 
 data class CardPackImportReport(
     val packId: String,
     val packName: String,
     val acceptedCards: List<ImportedMpvCard>,
-    val rejectedReasons: List<String>
+    val rejectedReasons: List<String>,
+    val splitOffMetadata: SplitOffSetMetadata? = null
 ) {
     val isFullyValid: Boolean get() = rejectedReasons.isEmpty() && acceptedCards.isNotEmpty()
+    val canonOriginalCount: Int get() = acceptedCards.count { it.cardOrigin == CardOrigin.CANON_ORIGINAL }
+    val fanAlternateVariantCount: Int get() = acceptedCards.count { it.cardOrigin == CardOrigin.FAN_ALTERNATE_VARIANT }
+    val originalOcCount: Int get() = acceptedCards.count { it.cardOrigin == CardOrigin.ORIGINAL_OC_CARD }
 }
 
 object CodeStringExporter {
@@ -471,6 +503,15 @@ object CodeStringExporter {
             put("masterHubRepo", MASTER_HUB_REPO)
             put("dualConsentRule", "NO_SCHEMA_SYNC_OR_EXPORT_MIGRATION_WITHOUT_BOTH_CONSENTED")
             put(
+                "requiredCapabilities",
+                JSONArray(
+                    listOf(
+                        "CUSTOM_CARD_USAGE_TELEMETRY_V1",
+                        "SPLIT_OFF_CANON_PRESERVATION_V1"
+                    )
+                )
+            )
+            put(
                 "cardMakerConsent",
                 JSONObject().apply {
                     put("repo", CARD_MAKER_REPO)
@@ -558,13 +599,37 @@ object CodeStringExporter {
         val packTargetId = root.optString("targetClientId", "ULTIMATE_TCG_WIP").trim()
         val packUpstreamLock = root.optBoolean("upstreamSourceLock", false)
 
+        // Optional Fan-Fiction / Split-Off Set metadata (supports top-level or nested `splitOffSet` object)
+        val splitObj = root.optJSONObject("splitOffSet") ?: root
+        val rawSplitOffId = splitObj.optString("splitOffId", "").trim()
+        val splitOffMeta: SplitOffSetMetadata? = if (rawSplitOffId.isNotEmpty()) {
+            SplitOffSetMetadata(
+                splitOffId = rawSplitOffId,
+                splitOffTitle = splitObj.optString("splitOffTitle", packName).trim(),
+                splitOffKind = splitObj.optString("splitOffKind", "FAN_FICTION_TIMELINE_BRANCH").trim(),
+                parentOfficialSetId = splitObj.optString("parentOfficialSetId", "").trim(),
+                parentOfficialSetName = splitObj.optString("parentOfficialSetName", "").trim(),
+                preserveAllOriginalOfficialCards = splitObj.optBoolean("preserveAllOriginalOfficialCards", true),
+                canonDivergenceNotes = splitObj.optString("canonDivergenceNotes", "").trim()
+            )
+        } else {
+            null
+        }
+
         if (packUpstreamLock || CardCodeValidator.isClientIdLocked(packTargetId)) {
             rejected.add("LOCKED_CLIENT_FIREWALL: Pack '$packName' targets locked client '$packTargetId'.")
-            return CardPackImportReport(packId, packName, emptyList(), rejected)
+            return CardPackImportReport(packId, packName, emptyList(), rejected, splitOffMeta)
+        }
+
+        if (splitOffMeta != null && !splitOffMeta.preserveAllOriginalOfficialCards) {
+            rejected.add(
+                "SPLIT_OFF_CANON_PRESERVATION_RULE: Split-Off Set '${splitOffMeta.splitOffTitle}' must set preserveAllOriginalOfficialCards=true to keep 100% of original official canon cards intact."
+            )
+            return CardPackImportReport(packId, packName, emptyList(), rejected, splitOffMeta)
         }
 
         val cardsArray = root.optJSONArray("cards") ?: return CardPackImportReport(
-            packId, packName, emptyList(), listOf("Missing 'cards' array in card pack JSON.")
+            packId, packName, emptyList(), listOf("Missing 'cards' array in card pack JSON."), splitOffMeta
         )
 
         val targetDescriptor = CardCodeValidator.canonicalTargetCatalog.firstOrNull {
@@ -587,9 +652,13 @@ object CodeStringExporter {
             val effectType = item.optString("effectType", "RESOURCE_BOOST").trim()
             val temporalEffect = item.optString("temporalEffect", "").trim()
             val ability = item.optString("ability", "").trim()
+            val cardOrigin = CardOrigin.fromRaw(item.optString("cardOrigin", ""))
+            val linkedCanonCardId = item.optString("linkedCanonCardId", "").trim()
 
             val filters = mutableSetOf<Int>()
-            val filtersArr = item.optJSONArray("filterNumbers") ?: item.optJSONArray("flavorFilters")
+            val filtersArr = item.optJSONArray("filterNumbers")
+                ?: item.optJSONArray("flavorFilters")
+                ?: item.optJSONArray("requestedFilterNumbers")
             if (filtersArr != null) {
                 for (fIdx in 0 until filtersArr.length()) {
                     val fVal = filtersArr.optInt(fIdx, -1)
@@ -641,11 +710,21 @@ object CodeStringExporter {
                     def21 = def21,
                     effectType = effectType,
                     temporalEffect = temporalEffect,
-                    ability = ability
+                    ability = ability,
+                    cardOrigin = cardOrigin,
+                    linkedCanonCardId = linkedCanonCardId,
+                    splitOffSetId = item.optString("splitOffSetId", splitOffMeta?.splitOffId.orEmpty()).trim(),
+                    parentOfficialSetId = item.optString("parentOfficialSetId", splitOffMeta?.parentOfficialSetId.orEmpty()).trim()
                 )
             )
         }
 
-        return CardPackImportReport(packId, packName, accepted, rejected)
+        if (splitOffMeta != null && accepted.none { it.cardOrigin == CardOrigin.CANON_ORIGINAL }) {
+            rejected.add(
+                "SPLIT_OFF_CANON_PRESERVATION_RULE: Split-Off Set '${splitOffMeta.splitOffTitle}' contains zero CANON_ORIGINAL cards; official parent cards must remain intact."
+            )
+        }
+
+        return CardPackImportReport(packId, packName, accepted, rejected, splitOffMeta)
     }
 }

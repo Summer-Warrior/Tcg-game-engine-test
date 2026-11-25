@@ -4,6 +4,7 @@ import com.example.data.AlignmentEvaluationInput
 import com.example.data.AlignmentHealthState
 import com.example.data.CardCodeValidator
 import com.example.data.CardContextMode
+import com.example.data.CardOrigin
 import com.example.data.CardTemplate
 import com.example.data.CardValidationRequest
 import com.example.data.ClientTargetDescriptor
@@ -12,6 +13,8 @@ import com.example.data.PairCategory
 import com.example.data.RegistryAssetLoader
 import com.example.data.StartupAlignmentChecker
 import com.example.data.TwentyColorPieCatalog
+import com.example.data.telemetry.CardInteractionType
+import com.example.data.telemetry.CardUsageTelemetryTracker
 import com.example.engine.ComboSynthesizer
 import com.example.engine.EngineInvariantsVerifier
 import org.json.JSONObject
@@ -35,6 +38,16 @@ class EngineAlignmentAndInvariantsTest {
         )
         val file = candidates.firstOrNull { it.exists() }
             ?: error("Could not locate tcg-catalog.json in ${candidates.map { it.absolutePath }}")
+        return file.readText(Charsets.UTF_8)
+    }
+
+    private fun loadBundledCardPacksFile(): String {
+        val candidates = listOf(
+            File("src/main/assets/registry/card-packs.json"),
+            File("app/src/main/assets/registry/card-packs.json")
+        )
+        val file = candidates.firstOrNull { it.exists() }
+            ?: error("Could not locate card-packs.json in ${candidates.map { it.absolutePath }}")
         return file.readText(Charsets.UTF_8)
     }
 
@@ -252,5 +265,238 @@ class EngineAlignmentAndInvariantsTest {
         )
         assertEquals(AlignmentHealthState.LINKED_AND_CURRENT, healthyReport.status)
         assertFalse(healthyReport.shouldShowPopup)
+    }
+
+    @Test
+    fun splitOffSetPreservesAllOfficialCanonCardsAndEnforcesFirewall() {
+        val warnings = mutableListOf<String>()
+        val packs = RegistryAssetLoader.parseCardPacksJson(loadBundledCardPacksFile(), warnings)
+        assertTrue("Expected zero card-pack parse warnings, got: $warnings", warnings.isEmpty())
+
+        val splitOffPack = packs.firstOrNull { it.isSplitOffSet }
+        assertTrue("Expected starter Fan-Fiction Split-Off Set in card-packs.json", splitOffPack != null)
+        val meta = splitOffPack!!.splitOff!!
+        assertTrue(meta.preserveAllOriginalOfficialCards)
+        assertTrue(splitOffPack.cards.any { it.cardOrigin == CardOrigin.CANON_ORIGINAL })
+        assertTrue(splitOffPack.cards.any { it.cardOrigin == CardOrigin.FAN_ALTERNATE_VARIANT && it.linkedCanonCardId.isNotBlank() })
+        assertTrue(splitOffPack.cards.any { it.cardOrigin == CardOrigin.ORIGINAL_OC_CARD })
+
+        // Reject Split-Off Set that attempts to drop official canon cards (preserveAllOriginalOfficialCards = false)
+        val strippedCanonPackJson = """
+            {
+              "packId": "illegal_stripped_splitoff",
+              "packName": "Stripped Canon Pack",
+              "targetClientId": "EDOPRO_CUSTOM_FORK",
+              "splitOffId": "split_bad_01",
+              "splitOffTitle": "Bad Canon Stripping Set",
+              "splitOffKind": "FAN_FICTION_AU",
+              "parentOfficialSetId": "YGO_LOB_2002",
+              "parentOfficialSetName": "Legend of Blue Eyes",
+              "preserveAllOriginalOfficialCards": false,
+              "cards": [
+                {
+                  "cardId": "000000000000000009999",
+                  "name": "Solo OC Card",
+                  "targetClientId": "EDOPRO_CUSTOM_FORK",
+                  "cardOrigin": "ORIGINAL_OC_CARD",
+                  "pipCost": "{W}",
+                  "atk21": "2500",
+                  "def21": "2000"
+                }
+              ]
+            }
+        """.trimIndent()
+        val strippedReport = CodeStringExporter.validateAndParseCardPackJson(strippedCanonPackJson)
+        assertTrue(
+            "Split-Off Set with preserveAllOriginalOfficialCards=false must be rejected",
+            strippedReport.acceptedCards.isEmpty() && strippedReport.rejectedReasons.isNotEmpty()
+        )
+
+        // Reject Split-Off Set targeting locked upstream GitHub client (EDOPRO_BASE_MR5)
+        val lockedTargetPackJson = """
+            {
+              "packId": "illegal_locked_splitoff",
+              "packName": "Locked Client Split-Off",
+              "targetClientId": "EDOPRO_BASE_MR5",
+              "splitOffId": "split_locked_01",
+              "splitOffTitle": "Illegal Locked Split-Off",
+              "splitOffKind": "FAN_FICTION_AU",
+              "parentOfficialSetId": "YGO_MR5",
+              "parentOfficialSetName": "Master Rule 5",
+              "preserveAllOriginalOfficialCards": true,
+              "cards": [
+                {
+                  "cardId": "000000000000000008963",
+                  "name": "Blue-Eyes White Dragon",
+                  "targetClientId": "EDOPRO_BASE_MR5",
+                  "cardOrigin": "CANON_ORIGINAL",
+                  "pipCost": "{W}",
+                  "atk21": "3000",
+                  "def21": "2500"
+                }
+              ]
+            }
+        """.trimIndent()
+        val lockedReport = CodeStringExporter.validateAndParseCardPackJson(lockedTargetPackJson)
+        assertTrue(
+            "Locked upstream client target must be blocked",
+            lockedReport.acceptedCards.isEmpty() && lockedReport.rejectedReasons.isNotEmpty()
+        )
+
+        // Reject Split-Off Set card carrying Time-Travel Filter 19 on a match card
+        val timeTravelPackJson = """
+            {
+              "packId": "illegal_timetravel_splitoff",
+              "packName": "Time Travel Split-Off",
+              "targetClientId": "ULTIMATE_TCG_WIP",
+              "splitOffId": "split_tt_01",
+              "splitOffTitle": "Chrono Violation Set",
+              "splitOffKind": "FAN_FICTION_AU",
+              "parentOfficialSetId": "YGO_BC",
+              "parentOfficialSetName": "Battle City",
+              "preserveAllOriginalOfficialCards": true,
+              "cards": [
+                {
+                  "cardId": "000000000000000000001",
+                  "name": "Canon Anchor",
+                  "targetClientId": "ULTIMATE_TCG_WIP",
+                  "cardOrigin": "CANON_ORIGINAL",
+                  "pipCost": "{W}",
+                  "atk21": "2000",
+                  "def21": "2000"
+                },
+                {
+                  "cardId": "000000000000000000002",
+                  "name": "Illegal Time-Travel OC",
+                  "targetClientId": "ULTIMATE_TCG_WIP",
+                  "cardOrigin": "ORIGINAL_OC_CARD",
+                  "pipCost": "{U}",
+                  "atk21": "2500",
+                  "def21": "2100",
+                  "requestedFilterNumbers": [19]
+                }
+              ]
+            }
+        """.trimIndent()
+        val ttReport = CodeStringExporter.validateAndParseCardPackJson(timeTravelPackJson)
+        assertEquals(1, ttReport.acceptedCards.size)
+        assertTrue("Time-travel filter 19 must be rejected on match cards", ttReport.rejectedReasons.isNotEmpty())
+    }
+
+    @Test
+    fun customCardUsageTelemetryStartsEmptyAndTracksRealCanonAuOcInteractions() {
+        val tracker = CardUsageTelemetryTracker()
+        val initial = tracker.snapshot.value
+        assertEquals("1.0.0", initial.schemaVersion)
+        assertEquals(0, initial.totalMatchesTracked)
+        assertEquals(0, initial.cards.size)
+        assertEquals(0, initial.interactions.size)
+        assertFalse(initial.hasRealTelemetry)
+
+        val canonCard = CardTemplate(
+            id = "000000000000089631139",
+            passcode = "89631139",
+            name = "Blue-Eyes White Dragon",
+            baseVariantId = "EDOPRO_CUSTOM_FORK",
+            cardType = "Monster",
+            cost = 8,
+            attack = 3000,
+            defense = 2500,
+            abilityText = "Legendary dragon.",
+            artResId = 0,
+            cardOrigin = CardOrigin.CANON_ORIGINAL,
+            splitOffSetId = "split_off_battle_city_neon_meridian_01",
+            parentOfficialSetId = "YGO_BATTLE_CITY_CANON"
+        )
+        val auVariant = CardTemplate(
+            id = "000000000000900000101",
+            passcode = "900000101",
+            name = "Blue-Eyes Neon Meridian Dragon (AU)",
+            baseVariantId = "EDOPRO_CUSTOM_FORK",
+            cardType = "Monster",
+            cost = 8,
+            attack = 3200,
+            defense = 2600,
+            abilityText = "AU alternate timeline variant.",
+            artResId = 0,
+            cardOrigin = CardOrigin.FAN_ALTERNATE_VARIANT,
+            linkedCanonCardId = "000000000000089631139",
+            splitOffSetId = "split_off_battle_city_neon_meridian_01",
+            parentOfficialSetId = "YGO_BATTLE_CITY_CANON"
+        )
+        val ocCard = CardTemplate(
+            id = "000000000000900000201",
+            passcode = "900000201",
+            name = "Kael, Meridian Duelist Envoy",
+            baseVariantId = "EDOPRO_CUSTOM_FORK",
+            cardType = "Monster",
+            cost = 4,
+            attack = 2100,
+            defense = 1800,
+            abilityText = "Original OC Duelist.",
+            artResId = 0,
+            cardOrigin = CardOrigin.ORIGINAL_OC_CARD,
+            splitOffSetId = "split_off_battle_city_neon_meridian_01",
+            parentOfficialSetId = "YGO_BATTLE_CITY_CANON"
+        )
+
+        tracker.recordCardDrawn(canonCard, "match_alpha")
+        tracker.recordCardPlayed(canonCard, turnNumber = 1, matchId = "match_alpha")
+        tracker.recordCardPlayed(auVariant, turnNumber = 3, matchId = "match_alpha")
+        tracker.recordCardInteraction(
+            type = CardInteractionType.COMBO_SYNERGY,
+            source = auVariant,
+            target = canonCard,
+            phase = "MP1",
+            baseVariantId = "EDOPRO_CUSTOM_FORK",
+            sampleLogLine = "AU Variant resonated with Canon Original."
+        )
+        tracker.recordCardAttacked(
+            attacker = ocCard,
+            damageDealt = 2100L,
+            defender = canonCard,
+            defenderDestroyed = true,
+            phase = "BP"
+        )
+        tracker.recordMatchOutcome(hostWon = true, matchId = "match_alpha")
+
+        val snap = tracker.snapshot.value
+        assertTrue(snap.hasRealTelemetry)
+        assertEquals(1, snap.totalMatchesTracked)
+        assertEquals(3, snap.cards.size)
+        assertTrue(snap.totalInteractionsRecorded >= 2)
+
+        val json = JSONObject(snap.toJsonString())
+        assertEquals("1.0.0", json.getString("schemaVersion"))
+        assertEquals("CustomCardUsageReport", json.getString("reportType"))
+        val breakdown = json.getJSONObject("originBreakdown")
+        assertEquals(1, breakdown.getInt("canonOriginalCards"))
+        assertEquals(1, breakdown.getInt("fanAlternateVariantCards"))
+        assertEquals(1, breakdown.getInt("originalOcCards"))
+        assertEquals(3, json.getJSONArray("cardMetrics").length())
+        assertTrue(json.getJSONArray("interactionMetrics").length() >= 2)
+
+        // Archive & reset returns cleanly to empty live counters
+        tracker.archiveAndReset()
+        val afterReset = tracker.snapshot.value
+        assertFalse(afterReset.hasRealTelemetry)
+        assertEquals(0, afterReset.cards.size)
+        assertEquals(1, afterReset.archivedReportCount)
+    }
+
+    @Test
+    fun handshakeContractIncludesTelemetryAndSplitOffCapabilities() {
+        val contract = JSONObject(
+            CodeStringExporter.buildHandshakeContractJson(
+                gameEngineConsented = true,
+                cardMakerConsented = true,
+                recordedBy = "NexusTCG Engine v4.0",
+                recordedAtUtc = "2026-11-23T00:00:00Z"
+            )
+        )
+        val caps = contract.getJSONArray("requiredCapabilities")
+        val capSet = (0 until caps.length()).map { caps.getString(it) }.toSet()
+        assertTrue("CUSTOM_CARD_USAGE_TELEMETRY_V1" in capSet)
+        assertTrue("SPLIT_OFF_CANON_PRESERVATION_V1" in capSet)
     }
 }
