@@ -72,12 +72,13 @@ data class HandshakeDiagnostic(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NexusTcgViewModel(
-    private val repository: NexusTcgRepository,
+    private val repository: NexusTcgRepository? = null,
     private val currentUserId: String,
     private val currentUserName: String,
     private val boardSyncService: GameBoardSyncService? = null,
     private val gameStateManager: FirestoreGameStateManager? = null,
-    private val eventLogService: FirestoreGameEventLogService? = null
+    private val eventLogService: FirestoreGameEventLogService? = null,
+    val isOfflineMode: Boolean = (repository == null)
 ) : ViewModel() {
 
     private val _selectedBaseVariantId = MutableStateFlow("EDOPRO_BASE_MR5")
@@ -94,11 +95,27 @@ class NexusTcgViewModel(
     private val _lastHandshakeDiagnostic = MutableStateFlow<HandshakeDiagnostic?>(null)
     val lastHandshakeDiagnostic: StateFlow<HandshakeDiagnostic?> = _lastHandshakeDiagnostic.asStateFlow()
 
-    private val _statusBanner = MutableStateFlow<String?>(null)
+    private val _statusBanner = MutableStateFlow<String?>(
+        if (isOfflineMode) "Offline Local Mode active — Tabletop, 20-Color Atlas, Card Vault & Usage Telemetry work fully locally." else null
+    )
     val statusBanner: StateFlow<String?> = _statusBanner.asStateFlow()
 
-    private val _activeMatchId = MutableStateFlow<String?>(null)
+    private val _activeMatchId = MutableStateFlow<String?>(
+        if (isOfflineMode) "local_offline_duel" else null
+    )
     val activeMatchId: StateFlow<String?> = _activeMatchId.asStateFlow()
+
+    private val _offlineClients = MutableStateFlow<List<ClientNode>>(
+        if (isOfflineMode) buildStarterOfflineClients(currentUserId) else emptyList()
+    )
+    private val _offlineVariants = MutableStateFlow<List<TcgVariant>>(emptyList())
+    private val _offlineDecks = MutableStateFlow<List<CustomDeck>>(
+        if (isOfflineMode) buildStarterOfflineDecks(currentUserId) else emptyList()
+    )
+    private val _offlineMatches = MutableStateFlow<List<MatchSession>>(
+        if (isOfflineMode) listOf(buildStarterOfflineMatch(currentUserId, currentUserName)) else emptyList()
+    )
+    private val _offlineMatchEvents = MutableStateFlow<List<MatchGameEvent>>(emptyList())
 
     private val _localSyncedBoardFallback = MutableStateFlow<SerializedGameBoardState?>(null)
 
@@ -171,7 +188,9 @@ class NexusTcgViewModel(
         .flatMapLatest { matchId ->
             val service = eventLogService
             if (matchId.isNullOrBlank() || service == null) {
-                flowOf(UiState.Success(emptyList()))
+                _offlineMatchEvents.map<List<MatchGameEvent>, UiState<List<MatchGameEvent>>> { events ->
+                    UiState.Success(events)
+                }
             } else {
                 service.observeMatchEvents(matchId)
                     .map<List<MatchGameEvent>, UiState<List<MatchGameEvent>>> { events ->
@@ -259,188 +278,315 @@ class NexusTcgViewModel(
     private var hasEnsuredEdoProNodes = false
     private var hasSeededDiscordRpData = false
 
-    val variantsState: StateFlow<UiState<List<TcgVariant>>> = repository.observeVariants(currentUserId)
-        .map<List<TcgVariant>, UiState<List<TcgVariant>>> { list ->
-            UiState.Success(list)
-        }
-        .catch { error ->
-            val firestoreError = generateSequence(error) { it.cause }
-                .filterIsInstance<FirebaseFirestoreException>()
-                .firstOrNull()
-            if (firestoreError == null && error is CancellationException) throw error
-            val rootError = firestoreError ?: error
-            Log.w(TAG, "Error observing variants", rootError)
-            emit(UiState.Error(rootError.message ?: "Failed to load engine variants"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000L),
-            initialValue = UiState.Loading
-        )
-
-    val clientsState: StateFlow<UiState<List<ClientNode>>> = repository.observeClients(currentUserId)
-        .map<List<ClientNode>, UiState<List<ClientNode>>> { list ->
-            if (list.isEmpty() && !hasSeededInitialData) {
-                hasSeededInitialData = true
-                hasEnsuredEdoProNodes = true
-                seedStarterNodesAndVariants()
-            } else if (list.isNotEmpty() && !hasEnsuredEdoProNodes) {
-                hasEnsuredEdoProNodes = true
-                val hasBaseEdo = list.any { it.baseVariantId == "EDOPRO_BASE_MR5" }
-                val hasCloneEdo = list.any { it.baseVariantId == "EDOPRO_CUSTOM_FORK" }
-                val hasBaseForge = list.any { it.baseVariantId == "FORGE_MTG_BASE" }
-                val hasCloneForge = list.any { it.baseVariantId == "FORGE_CUSTOM_CLONE" }
-                val hasHybridMix = list.any { it.baseVariantId == "HYBRID_FORGE_EDOPRO_MIX" }
-                if (!hasBaseEdo || !hasCloneEdo || !hasBaseForge || !hasCloneForge || !hasHybridMix) {
-                    ensureCoreAndForgeAndHybridNodes(
-                        hasBaseEdo = hasBaseEdo,
-                        hasCloneEdo = hasCloneEdo,
-                        hasBaseForge = hasBaseForge,
-                        hasCloneForge = hasCloneForge,
-                        hasHybridMix = hasHybridMix
-                    )
+    val variantsState: StateFlow<UiState<List<TcgVariant>>> = (
+        if (isOfflineMode || repository == null) {
+            _offlineVariants.map<List<TcgVariant>, UiState<List<TcgVariant>>> { UiState.Success(it) }
+        } else {
+            repository.observeVariants(currentUserId)
+                .map<List<TcgVariant>, UiState<List<TcgVariant>>> { list ->
+                    UiState.Success(list)
                 }
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing variants", rootError)
+                    emit(UiState.Error(rootError.message ?: "Failed to load engine variants"))
+                }
+        }
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = if (isOfflineMode) UiState.Success(_offlineVariants.value) else UiState.Loading
+    )
+
+    val clientsState: StateFlow<UiState<List<ClientNode>>> = (
+        if (isOfflineMode || repository == null) {
+            _offlineClients.map<List<ClientNode>, UiState<List<ClientNode>>> { list ->
+                if (_activeClientNode.value == null && list.isNotEmpty()) {
+                    _activeClientNode.value = list.firstOrNull { it.baseVariantId == _selectedBaseVariantId.value } ?: list.first()
+                }
+                UiState.Success(list)
             }
-            if (list.isNotEmpty()) {
-                // Reconcile any existing Base Client so its endpointUri refers to the exact GitHub repository URL
-                list.forEach { node ->
-                    if ((node.baseVariantId == "EDOPRO_BASE_MR5" || node.baseVariantId == "FORGE_MTG_BASE") &&
-                        node.endpointUri != BuiltInTcgCatalog.exactGitHubRepoUrl(node.baseVariantId)
-                    ) {
-                        viewModelScope.launch {
-                            repository.syncBaseClientFromUpstreamGitHubRepo(
-                                clientId = node.id,
-                                baseVariantId = node.baseVariantId
+        } else {
+            repository.observeClients(currentUserId)
+                .map<List<ClientNode>, UiState<List<ClientNode>>> { list ->
+                    if (list.isEmpty() && !hasSeededInitialData) {
+                        hasSeededInitialData = true
+                        hasEnsuredEdoProNodes = true
+                        seedStarterNodesAndVariants()
+                    } else if (list.isNotEmpty() && !hasEnsuredEdoProNodes) {
+                        hasEnsuredEdoProNodes = true
+                        val hasBaseEdo = list.any { it.baseVariantId == "EDOPRO_BASE_MR5" }
+                        val hasCloneEdo = list.any { it.baseVariantId == "EDOPRO_CUSTOM_FORK" }
+                        val hasBaseForge = list.any { it.baseVariantId == "FORGE_MTG_BASE" }
+                        val hasCloneForge = list.any { it.baseVariantId == "FORGE_CUSTOM_CLONE" }
+                        val hasHybridMix = list.any { it.baseVariantId == "HYBRID_FORGE_EDOPRO_MIX" }
+                        if (!hasBaseEdo || !hasCloneEdo || !hasBaseForge || !hasCloneForge || !hasHybridMix) {
+                            ensureCoreAndForgeAndHybridNodes(
+                                hasBaseEdo = hasBaseEdo,
+                                hasCloneEdo = hasCloneEdo,
+                                hasBaseForge = hasBaseForge,
+                                hasCloneForge = hasCloneForge,
+                                hasHybridMix = hasHybridMix
                             )
                         }
                     }
+                    if (list.isNotEmpty()) {
+                        list.forEach { node ->
+                            if ((node.baseVariantId == "EDOPRO_BASE_MR5" || node.baseVariantId == "FORGE_MTG_BASE") &&
+                                node.endpointUri != BuiltInTcgCatalog.exactGitHubRepoUrl(node.baseVariantId)
+                            ) {
+                                viewModelScope.launch {
+                                    repository.syncBaseClientFromUpstreamGitHubRepo(
+                                        clientId = node.id,
+                                        baseVariantId = node.baseVariantId
+                                    )
+                                }
+                            }
+                        }
+                        val currentActiveId = _activeClientNode.value?.id
+                        val updatedActive = list.firstOrNull { it.id == currentActiveId }
+                            ?: list.firstOrNull { it.baseVariantId == _selectedBaseVariantId.value }
+                            ?: list.first()
+                        _activeClientNode.value = updatedActive
+                    }
+                    UiState.Success(list)
                 }
-                val currentActiveId = _activeClientNode.value?.id
-                val updatedActive = list.firstOrNull { it.id == currentActiveId }
-                    ?: list.firstOrNull { it.baseVariantId == _selectedBaseVariantId.value }
-                    ?: list.first()
-                _activeClientNode.value = updatedActive
-            }
-            UiState.Success(list)
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing clients", rootError)
+                    emit(UiState.Error(rootError.message ?: "Failed to load client bridge nodes"))
+                }
         }
-        .catch { error ->
-            val firestoreError = generateSequence(error) { it.cause }
-                .filterIsInstance<FirebaseFirestoreException>()
-                .firstOrNull()
-            if (firestoreError == null && error is CancellationException) throw error
-            val rootError = firestoreError ?: error
-            Log.w(TAG, "Error observing clients", rootError)
-            emit(UiState.Error(rootError.message ?: "Failed to load client bridge nodes"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000L),
-            initialValue = UiState.Loading
-        )
-
-    val decksState: StateFlow<UiState<List<CustomDeck>>> = repository.observeDecks(currentUserId)
-        .map<List<CustomDeck>, UiState<List<CustomDeck>>> { UiState.Success(it) }
-        .catch { error ->
-            val firestoreError = generateSequence(error) { it.cause }
-                .filterIsInstance<FirebaseFirestoreException>()
-                .firstOrNull()
-            if (firestoreError == null && error is CancellationException) throw error
-            val rootError = firestoreError ?: error
-            Log.w(TAG, "Error observing decks", rootError)
-            emit(UiState.Error(rootError.message ?: "Failed to load decks"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000L),
-            initialValue = UiState.Loading
-        )
-
-    val matchesState: StateFlow<UiState<List<MatchSession>>> = combine(
-        repository.observeHostedMatches(currentUserId),
-        repository.observeOpenLobbyMatches()
-    ) { hosted, openLobbies ->
-        val merged = (hosted + openLobbies).distinctBy { it.id }
-        if (_activeMatchId.value == null && merged.isNotEmpty()) {
-            _activeMatchId.value = merged.first().id
-        }
-        UiState.Success(merged) as UiState<List<MatchSession>>
-    }.catch { error ->
-        val firestoreError = generateSequence(error) { it.cause }
-            .filterIsInstance<FirebaseFirestoreException>()
-            .firstOrNull()
-        if (firestoreError == null && error is CancellationException) throw error
-        val rootError = firestoreError ?: error
-        Log.w(TAG, "Error observing matches", rootError)
-        emit(UiState.Error(rootError.message ?: "Failed to load matches"))
-    }.stateIn(
+    ).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000L),
-        initialValue = UiState.Loading
+        initialValue = if (isOfflineMode) UiState.Success(_offlineClients.value) else UiState.Loading
     )
 
-    val discordServersState: StateFlow<UiState<List<DiscordServerHub>>> = repository.observeDiscordServers(currentUserId)
-        .map<List<DiscordServerHub>, UiState<List<DiscordServerHub>>> { list ->
-            if (list.isEmpty() && !hasSeededDiscordRpData) {
-                hasSeededDiscordRpData = true
-                seedStarterDiscordRoleplayHub()
-            } else if (_selectedDiscordServerId.value == null && list.isNotEmpty()) {
-                _selectedDiscordServerId.value = list.first().id
+    val decksState: StateFlow<UiState<List<CustomDeck>>> = (
+        if (isOfflineMode || repository == null) {
+            _offlineDecks.map<List<CustomDeck>, UiState<List<CustomDeck>>> { UiState.Success(it) }
+        } else {
+            repository.observeDecks(currentUserId)
+                .map<List<CustomDeck>, UiState<List<CustomDeck>>> { UiState.Success(it) }
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing decks", rootError)
+                    emit(UiState.Error(rootError.message ?: "Failed to load decks"))
+                }
+        }
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = if (isOfflineMode) UiState.Success(_offlineDecks.value) else UiState.Loading
+    )
+
+    val matchesState: StateFlow<UiState<List<MatchSession>>> = (
+        if (isOfflineMode || repository == null) {
+            _offlineMatches.map<List<MatchSession>, UiState<List<MatchSession>>> { list ->
+                if (_activeMatchId.value == null && list.isNotEmpty()) {
+                    _activeMatchId.value = list.first().id
+                }
+                UiState.Success(list)
             }
-            UiState.Success(list)
+        } else {
+            combine(
+                repository.observeHostedMatches(currentUserId),
+                repository.observeOpenLobbyMatches()
+            ) { hosted, openLobbies ->
+                val merged = (hosted + openLobbies).distinctBy { it.id }
+                if (_activeMatchId.value == null && merged.isNotEmpty()) {
+                    _activeMatchId.value = merged.first().id
+                }
+                UiState.Success(merged) as UiState<List<MatchSession>>
+            }.catch { error ->
+                val firestoreError = generateSequence(error) { it.cause }
+                    .filterIsInstance<FirebaseFirestoreException>()
+                    .firstOrNull()
+                if (firestoreError == null && error is CancellationException) throw error
+                val rootError = firestoreError ?: error
+                Log.w(TAG, "Error observing matches", rootError)
+                emit(UiState.Error(rootError.message ?: "Failed to load matches"))
+            }
         }
-        .catch { error ->
-            val firestoreError = generateSequence(error) { it.cause }
-                .filterIsInstance<FirebaseFirestoreException>()
-                .firstOrNull()
-            if (firestoreError == null && error is CancellationException) throw error
-            val rootError = firestoreError ?: error
-            Log.w(TAG, "Error observing Discord servers", rootError)
-            emit(UiState.Error(rootError.message ?: "Failed to load Discord roleplay servers"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000L),
-            initialValue = UiState.Loading
-        )
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = if (isOfflineMode) UiState.Success(_offlineMatches.value) else UiState.Loading
+    )
 
-    val rpCharactersState: StateFlow<UiState<List<RpCharacterPersona>>> = repository.observeRpCharacters(currentUserId)
-        .map<List<RpCharacterPersona>, UiState<List<RpCharacterPersona>>> { list ->
-            UiState.Success(list)
+    val discordServersState: StateFlow<UiState<List<DiscordServerHub>>> = (
+        if (isOfflineMode || repository == null) {
+            flowOf(UiState.Success(emptyList()))
+        } else {
+            repository.observeDiscordServers(currentUserId)
+                .map<List<DiscordServerHub>, UiState<List<DiscordServerHub>>> { list ->
+                    if (list.isEmpty() && !hasSeededDiscordRpData) {
+                        hasSeededDiscordRpData = true
+                        seedStarterDiscordRoleplayHub()
+                    } else if (_selectedDiscordServerId.value == null && list.isNotEmpty()) {
+                        _selectedDiscordServerId.value = list.first().id
+                    }
+                    UiState.Success(list)
+                }
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing Discord servers", rootError)
+                    emit(UiState.Error(rootError.message ?: "Failed to load Discord roleplay servers"))
+                }
         }
-        .catch { error ->
-            val firestoreError = generateSequence(error) { it.cause }
-                .filterIsInstance<FirebaseFirestoreException>()
-                .firstOrNull()
-            if (firestoreError == null && error is CancellationException) throw error
-            val rootError = firestoreError ?: error
-            Log.w(TAG, "Error observing RP characters", rootError)
-            emit(UiState.Error(rootError.message ?: "Failed to load RP characters"))
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000L),
-            initialValue = UiState.Loading
-        )
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = if (isOfflineMode) UiState.Success(emptyList()) else UiState.Loading
+    )
 
-    val discordMessagesState: StateFlow<UiState<List<DiscordRpMessage>>> = repository.observeDiscordMessages(currentUserId)
-        .map<List<DiscordRpMessage>, UiState<List<DiscordRpMessage>>> { list ->
-            val sorted = list.sortedBy { it.createdAt?.seconds ?: 0L }
-            UiState.Success(sorted)
+    val rpCharactersState: StateFlow<UiState<List<RpCharacterPersona>>> = (
+        if (isOfflineMode || repository == null) {
+            flowOf(UiState.Success(emptyList()))
+        } else {
+            repository.observeRpCharacters(currentUserId)
+                .map<List<RpCharacterPersona>, UiState<List<RpCharacterPersona>>> { list ->
+                    UiState.Success(list)
+                }
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing RP characters", rootError)
+                    emit(UiState.Error(rootError.message ?: "Failed to load RP characters"))
+                }
         }
-        .catch { error ->
-            val firestoreError = generateSequence(error) { it.cause }
-                .filterIsInstance<FirebaseFirestoreException>()
-                .firstOrNull()
-            if (firestoreError == null && error is CancellationException) throw error
-            val rootError = firestoreError ?: error
-            Log.w(TAG, "Error observing Discord messages", rootError)
-            emit(UiState.Error(rootError.message ?: "Failed to load Discord RP chat messages"))
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = if (isOfflineMode) UiState.Success(emptyList()) else UiState.Loading
+    )
+
+    val discordMessagesState: StateFlow<UiState<List<DiscordRpMessage>>> = (
+        if (isOfflineMode || repository == null) {
+            flowOf(UiState.Success(emptyList()))
+        } else {
+            repository.observeDiscordMessages(currentUserId)
+                .map<List<DiscordRpMessage>, UiState<List<DiscordRpMessage>>> { list ->
+                    val sorted = list.sortedBy { it.createdAt?.seconds ?: 0L }
+                    UiState.Success(sorted)
+                }
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing Discord messages", rootError)
+                    emit(UiState.Error(rootError.message ?: "Failed to load Discord RP chat messages"))
+                }
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000L),
-            initialValue = UiState.Loading
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = if (isOfflineMode) UiState.Success(emptyList()) else UiState.Loading
+    )
+
+    private suspend fun persistMatchState(
+        matchId: String,
+        connectedClients: List<String>,
+        turnNumber: Long,
+        activePhase: String,
+        hostLife: Long,
+        opponentLife: Long,
+        hostResources: Long,
+        hostMaxResources: Long,
+        opponentResources: Long,
+        hostBoardCards: List<String>,
+        opponentBoardCards: List<String>,
+        actionLog: List<String>,
+        status: String,
+        winnerName: String
+    ) {
+        val repo = repository
+        if (repo != null && !isOfflineMode) {
+            repo.updateMatchState(
+                matchId = matchId,
+                connectedClients = connectedClients,
+                turnNumber = turnNumber,
+                activePhase = activePhase,
+                hostLife = hostLife,
+                opponentLife = opponentLife,
+                hostResources = hostResources,
+                hostMaxResources = hostMaxResources,
+                opponentResources = opponentResources,
+                hostBoardCards = hostBoardCards,
+                opponentBoardCards = opponentBoardCards,
+                actionLog = actionLog,
+                status = status,
+                winnerName = winnerName
+            )
+        } else {
+            _offlineMatches.value = _offlineMatches.value.map { m ->
+                if (m.id == matchId) {
+                    m.copy(
+                        connectedClients = connectedClients,
+                        turnNumber = turnNumber,
+                        activePhase = activePhase,
+                        hostLife = hostLife,
+                        opponentLife = opponentLife,
+                        hostResources = hostResources,
+                        hostMaxResources = hostMaxResources,
+                        opponentResources = opponentResources,
+                        hostBoardCards = hostBoardCards,
+                        opponentBoardCards = opponentBoardCards,
+                        actionLog = actionLog,
+                        status = status,
+                        winnerName = winnerName
+                    )
+                } else m
+            }
+        }
+    }
+
+    private fun appendLocalOfflineEvent(
+        matchId: String,
+        actorLabel: String,
+        eventType: PersistentGameEventType,
+        summary: String,
+        detail: String = "",
+        turnNumber: Long = 1L,
+        activePhase: String = "MAIN"
+    ) {
+        if (!isOfflineMode && eventLogService != null) return
+        val entry = MatchGameEvent(
+            id = "local_ev_${System.currentTimeMillis()}_${_offlineMatchEvents.value.size}",
+            matchId = matchId,
+            actorUserId = currentUserId,
+            actorLabel = actorLabel,
+            eventType = eventType.code,
+            summary = summary,
+            detail = detail,
+            turnNumber = turnNumber,
+            activePhase = activePhase,
+            createdAt = com.google.firebase.Timestamp.now()
         )
+        _offlineMatchEvents.value = (_offlineMatchEvents.value + entry).takeLast(60)
+    }
 
     private fun ensureCoreAndForgeAndHybridNodes(
         hasBaseEdo: Boolean,
@@ -450,8 +596,9 @@ class NexusTcgViewModel(
         hasHybridMix: Boolean
     ) {
         viewModelScope.launch {
+            val repo = repository ?: return@launch
             if (!hasBaseEdo) {
-                repository.registerClientNode(
+                repo.registerClientNode(
                     clientName = "ProjectIgnis EDOPro Base Client",
                     clientType = "EDOPro Base (ProjectIgnis/EDOPro)",
                     endpointUri = "https://github.com/ProjectIgnis/EDOPro",
@@ -463,7 +610,7 @@ class NexusTcgViewModel(
                 )
             }
             if (!hasCloneEdo) {
-                repository.registerClientNode(
+                repo.registerClientNode(
                     clientName = "EDOPro Custom Project Clone (IgnisForge 21-Digit)",
                     clientType = "EDOPro Custom Clone (21-Digit Vars/Funcs)",
                     endpointUri = "ws://sandbox.edopro-custom.local:7912/expansions",
@@ -480,7 +627,7 @@ class NexusTcgViewModel(
                 )
             }
             if (!hasBaseForge) {
-                repository.registerClientNode(
+                repo.registerClientNode(
                     clientName = "Card-Forge: Forge MTG Standalone Client",
                     clientType = "Card-Forge Standalone (Card-Forge/forge)",
                     endpointUri = "https://github.com/Card-Forge/forge",
@@ -494,7 +641,7 @@ class NexusTcgViewModel(
                 )
             }
             if (!hasCloneForge) {
-                repository.registerClientNode(
+                repo.registerClientNode(
                     clientName = "Clone Card-Forge for Custom Projects (21-Digit SVar)",
                     clientType = "Card-Forge Custom Clone (customcards/*.txt)",
                     endpointUri = "git://custom-clone/Card-Forge/forge-CustomProjects",
@@ -511,7 +658,7 @@ class NexusTcgViewModel(
                 )
             }
             if (!hasHybridMix) {
-                repository.registerClientNode(
+                repo.registerClientNode(
                     clientName = "Mixed Client: Clone Forge + Clone EDOPro Custom",
                     clientType = "Extensible Hybrid (Forge + EDOPro 21d)",
                     endpointUri = "git://hybrid-mix/Card-Forge-forge+ProjectIgnis-EDOPro-Custom",
@@ -531,9 +678,10 @@ class NexusTcgViewModel(
     }
 
     private fun seedStarterNodesAndVariants() {
+        val repo = repository ?: return
         viewModelScope.launch {
             // 1. Official ProjectIgnis/EDOPro Base Client for Yu-Gi-Oh! (Strict Base Variant — Locked to GitHub Source)
-            repository.registerClientNode(
+            repo.registerClientNode(
                 clientName = "ProjectIgnis EDOPro Base Client",
                 clientType = "EDOPro Base (ProjectIgnis/EDOPro)",
                 endpointUri = "https://github.com/ProjectIgnis/EDOPro",
@@ -544,7 +692,7 @@ class NexusTcgViewModel(
                 maxDigitPrecision = 10L
             )
             // 2. Separate EDOPro Clone dedicated to Custom Projects (21-Digit Variable/Function/Code String Support)
-            repository.registerClientNode(
+            repo.registerClientNode(
                 clientName = "EDOPro Custom Project Clone (IgnisForge 21-Digit)",
                 clientType = "EDOPro Custom Clone (21-Digit Vars/Funcs)",
                 endpointUri = "ws://sandbox.edopro-custom.local:7912/expansions",
@@ -560,7 +708,7 @@ class NexusTcgViewModel(
                 customCodeVarExpr21 = BigInt21Engine.DEFAULT_CODE_VAR_EXPR_21
             )
             // 3. Standalone Card-Forge Client for Magic: The Gathering (https://github.com/Card-Forge/forge — Locked to GitHub Source)
-            repository.registerClientNode(
+            repo.registerClientNode(
                 clientName = "Card-Forge: Forge MTG Standalone Client",
                 clientType = "Card-Forge Standalone (Card-Forge/forge)",
                 endpointUri = "https://github.com/Card-Forge/forge",
@@ -573,7 +721,7 @@ class NexusTcgViewModel(
                 customCodeVarExpr21 = "SVar:BaseForge=\"500101\""
             )
             // 4. Separate Clone of Card-Forge for Custom MTG Projects (21-Digit SVar/P-T)
-            repository.registerClientNode(
+            repo.registerClientNode(
                 clientName = "Clone Card-Forge for Custom Projects (21-Digit SVar)",
                 clientType = "Card-Forge Custom Clone (customcards/*.txt)",
                 endpointUri = "git://custom-clone/Card-Forge/forge-CustomProjects",
@@ -589,7 +737,7 @@ class NexusTcgViewModel(
                 customCodeVarExpr21 = BigInt21Engine.DEFAULT_FORGE_CUSTOM_VAR_EXPR_21
             )
             // 5. Extensible Mixed Client Combining Clone Card-Forge + Clone EDOPro for Custom Project
-            repository.registerClientNode(
+            repo.registerClientNode(
                 clientName = "Mixed Client: Clone Forge + Clone EDOPro Custom",
                 clientType = "Extensible Hybrid (Forge + EDOPro 21d)",
                 endpointUri = "git://hybrid-mix/Card-Forge-forge+ProjectIgnis-EDOPro-Custom",
@@ -605,7 +753,7 @@ class NexusTcgViewModel(
                 customCodeVarExpr21 = BigInt21Engine.DEFAULT_HYBRID_MIX_VAR_EXPR_21
             )
             // 6. Additional Multi-TCG Clients
-            repository.registerClientNode(
+            repo.registerClientNode(
                 clientName = "AetherDesk Desktop v2.4",
                 clientType = "Desktop Bridge",
                 endpointUri = "wss://relay.nexustcg.io/aether-base",
@@ -616,7 +764,7 @@ class NexusTcgViewModel(
             )
 
             // Seed EDOPro Base MR5, EDOPro Custom Clone, Card-Forge MTG Base, Card-Forge Custom Clone & Mixed Hybrid Variants
-            repository.createVariant(
+            repo.createVariant(
                 name = "ProjectIgnis EDOPro Base (MR5 Standard)",
                 baseVariantId = "EDOPRO_BASE_MR5",
                 resourceName = "Summon/Chain",
@@ -629,7 +777,7 @@ class NexusTcgViewModel(
                 customCodeString21 = "89631139",
                 customCodeVarExpr21 = "s.code_var_21 = \"89631139\""
             )
-            repository.createVariant(
+            repo.createVariant(
                 name = "EDOPro Custom Clone (21-Digit BigInt21 Boss Duel)",
                 baseVariantId = "EDOPRO_CUSTOM_FORK",
                 resourceName = "Summon/Chain",
@@ -645,7 +793,7 @@ class NexusTcgViewModel(
                 customCodeString21 = BigInt21Engine.DEFAULT_CODE_STRING_21,
                 customCodeVarExpr21 = BigInt21Engine.DEFAULT_CODE_VAR_EXPR_21
             )
-            repository.createVariant(
+            repo.createVariant(
                 name = "Card-Forge Standalone (MTG 20 Life Standard)",
                 baseVariantId = "FORGE_MTG_BASE",
                 resourceName = "Mana",
@@ -658,7 +806,7 @@ class NexusTcgViewModel(
                 customCodeString21 = "500101",
                 customCodeVarExpr21 = "SVar:BaseForge=\"500101\""
             )
-            repository.createVariant(
+            repo.createVariant(
                 name = "Clone Card-Forge Custom Project (21-Digit SVar)",
                 baseVariantId = "FORGE_CUSTOM_CLONE",
                 resourceName = "Custom Mana",
@@ -674,7 +822,7 @@ class NexusTcgViewModel(
                 customCodeString21 = "900002010000000000021",
                 customCodeVarExpr21 = BigInt21Engine.DEFAULT_FORGE_CUSTOM_VAR_EXPR_21
             )
-            repository.createVariant(
+            repo.createVariant(
                 name = "Mixed Client: Forge + EDOPro Custom Clone (Extensible)",
                 baseVariantId = "HYBRID_FORGE_EDOPRO_MIX",
                 resourceName = "Mana/Chain",
@@ -692,7 +840,7 @@ class NexusTcgViewModel(
             )
 
             // Seed starter Decks for EDOPro Base, EDOPro Custom Clone, Card-Forge Standalone & Mixed Client
-            repository.createDeck(
+            repo.createDeck(
                 name = "Ignis Sovereign Dragon (.ydk)",
                 baseVariantId = "EDOPRO_BASE_MR5",
                 strategyTag = "Master Rule 5",
@@ -708,7 +856,7 @@ class NexusTcgViewModel(
                 customCodeString21 = "89631139",
                 customCodeVarExpr21 = "s.code_var_21 = \"89631139\""
             )
-            repository.createDeck(
+            repo.createDeck(
                 name = "Custom Project Expansion (.cdb + 21-Digit Lua)",
                 baseVariantId = "EDOPRO_CUSTOM_FORK",
                 strategyTag = "21-Digit Custom Expansion",
@@ -724,7 +872,7 @@ class NexusTcgViewModel(
                 customCodeString21 = BigInt21Engine.DEFAULT_CODE_STRING_21,
                 customCodeVarExpr21 = BigInt21Engine.DEFAULT_CODE_VAR_EXPR_21
             )
-            repository.createDeck(
+            repo.createDeck(
                 name = "Card-Forge Planeswalker Control (.dck)",
                 baseVariantId = "FORGE_MTG_BASE",
                 strategyTag = "MTG Stack & Mana",
@@ -740,7 +888,7 @@ class NexusTcgViewModel(
                 customCodeString21 = "500101",
                 customCodeVarExpr21 = "SVar:BaseForge=\"500101\""
             )
-            repository.createDeck(
+            repo.createDeck(
                 name = "Mixed Forge + EDOPro Custom Hybrid (.dck + .ydk)",
                 baseVariantId = "HYBRID_FORGE_EDOPRO_MIX",
                 strategyTag = "Extensible Hybrid (Forge+EDOPro)",
@@ -758,7 +906,7 @@ class NexusTcgViewModel(
             )
 
             // Seed initial EDOPro Base Arena Match
-            val matchRes = repository.createMatchSession(
+            val matchRes = repo.createMatchSession(
                 hostName = currentUserName,
                 title = "EDOPro Base Duel Server (MR5 • 8000 LP)",
                 baseVariantId = "EDOPRO_BASE_MR5",
@@ -801,7 +949,15 @@ class NexusTcgViewModel(
         val safeFirestoreLife = BigInt21Engine.toSafeFirestoreLong(cleanLp21, minVal = 1L)
 
         viewModelScope.launch {
-            repository.registerClientNode(
+            val repo = repository
+            if (repo == null) {
+                _selectedBaseVariantId.value = "EDOPRO_CUSTOM_FORK"
+                _activeCustomVariant.value = null
+                refreshHandForVariant("EDOPRO_CUSTOM_FORK")
+                _statusBanner.value = "Offline Local Mode: Activated EDOPro 21-Digit Clone '$cleanName' ($customFuncName -> $funcResult21)."
+                return@launch
+            }
+            repo.registerClientNode(
                 clientName = "EDOPro Clone: $cleanName",
                 clientType = "EDOPro 21-Digit Clone ($cleanCdb)",
                 endpointUri = "ws://custom-clone.edopro.local:7912/$cleanCdb",
@@ -816,7 +972,7 @@ class NexusTcgViewModel(
                 customCodeString21 = cleanCodeStr21,
                 customCodeVarExpr21 = cleanCodeVarExpr21
             )
-            repository.createVariant(
+            repo.createVariant(
                 name = "$cleanName (21-Digit Clone)",
                 baseVariantId = "EDOPRO_CUSTOM_FORK",
                 resourceName = "Summon/Chain",
@@ -832,7 +988,7 @@ class NexusTcgViewModel(
                 customCodeString21 = cleanCodeStr21,
                 customCodeVarExpr21 = cleanCodeVarExpr21
             )
-            repository.createDeck(
+            repo.createDeck(
                 name = "$cleanName Expansion (.ydk)",
                 baseVariantId = "EDOPRO_CUSTOM_FORK",
                 strategyTag = "21-Digit Custom ($cleanCdb)",
@@ -880,7 +1036,15 @@ class NexusTcgViewModel(
         val safeFirestoreLife = BigInt21Engine.toSafeFirestoreLong(cleanLife21, minVal = 1L)
 
         viewModelScope.launch {
-            repository.registerClientNode(
+            val repo = repository
+            if (repo == null) {
+                _selectedBaseVariantId.value = "FORGE_CUSTOM_CLONE"
+                _activeCustomVariant.value = null
+                refreshHandForVariant("FORGE_CUSTOM_CLONE")
+                _statusBanner.value = "Offline Local Mode: Activated Card-Forge Custom Clone '$cleanName'."
+                return@launch
+            }
+            repo.registerClientNode(
                 clientName = "Card-Forge Clone: $cleanName",
                 clientType = "Card-Forge Custom Clone ($cleanFolder)",
                 endpointUri = "git://custom-clone/Card-Forge/forge/$cleanFolder",
@@ -895,7 +1059,7 @@ class NexusTcgViewModel(
                 customCodeString21 = cleanCode21,
                 customCodeVarExpr21 = forgeExpr21
             )
-            repository.createVariant(
+            repo.createVariant(
                 name = "$cleanName (Card-Forge Clone)",
                 baseVariantId = "FORGE_CUSTOM_CLONE",
                 resourceName = "Custom Mana",
@@ -911,7 +1075,7 @@ class NexusTcgViewModel(
                 customCodeString21 = cleanCode21,
                 customCodeVarExpr21 = forgeExpr21
             )
-            repository.createDeck(
+            repo.createDeck(
                 name = "$cleanName Custom Forge (.dck)",
                 baseVariantId = "FORGE_CUSTOM_CLONE",
                 strategyTag = "Card-Forge Custom ($cleanFolder)",
@@ -958,7 +1122,15 @@ class NexusTcgViewModel(
         val safeFirestoreLife = BigInt21Engine.toSafeFirestoreLong(cleanLp21, minVal = 1L)
 
         viewModelScope.launch {
-            repository.registerClientNode(
+            val repo = repository
+            if (repo == null) {
+                _selectedBaseVariantId.value = "HYBRID_FORGE_EDOPRO_MIX"
+                _activeCustomVariant.value = null
+                refreshHandForVariant("HYBRID_FORGE_EDOPRO_MIX")
+                _statusBanner.value = "Offline Local Mode: Activated Mixed Client '$cleanName' (${modules.size} modules)."
+                return@launch
+            }
+            repo.registerClientNode(
                 clientName = cleanName,
                 clientType = "Mixed Client (Forge + EDOPro 21d • ${modules.size} Mods)",
                 endpointUri = "git://hybrid-mix/Card-Forge-forge+ProjectIgnis-EDOPro-Custom",
@@ -973,7 +1145,7 @@ class NexusTcgViewModel(
                 customCodeString21 = cleanCode21,
                 customCodeVarExpr21 = hybridExpr21
             )
-            repository.createVariant(
+            repo.createVariant(
                 name = "$cleanName (Extensible Mix)",
                 baseVariantId = "HYBRID_FORGE_EDOPRO_MIX",
                 resourceName = "Mana/Chain",
@@ -989,7 +1161,7 @@ class NexusTcgViewModel(
                 customCodeString21 = cleanCode21,
                 customCodeVarExpr21 = hybridExpr21
             )
-            repository.createDeck(
+            repo.createDeck(
                 name = "$cleanName Hybrid Deck (.dck + .ydk)",
                 baseVariantId = "HYBRID_FORGE_EDOPRO_MIX",
                 strategyTag = "Mixed Client (${modules.size} Modules)",
@@ -1050,7 +1222,13 @@ class NexusTcgViewModel(
         val modules = BigInt21Engine.extractMixedClientModules(updatedExpr21)
 
         viewModelScope.launch {
-            val res = repository.updateClient21DigitRegisters(
+            val repo = repository ?: run {
+                _selectedBaseVariantId.value = "HYBRID_FORGE_EDOPRO_MIX"
+                refreshHandForVariant("HYBRID_FORGE_EDOPRO_MIX")
+                _statusBanner.value = "Offline Local Mode: Added '$cleanModTitle' locally."
+                return@launch
+            }
+            val res = repo.updateClient21DigitRegisters(
                 clientId = resolvedMixClient.id,
                 customVarInput21 = updatedVar21,
                 customFuncInput21 = resolvedMixClient.customFuncInput21,
@@ -1087,7 +1265,12 @@ class NexusTcgViewModel(
             return
         }
         viewModelScope.launch {
-            val res = repository.updateClient21DigitRegisters(
+            val repo = repository ?: run {
+                val res21 = BigInt21Engine.evaluateFunction21(customFuncName, customVarInput21, customFuncInput21)
+                _statusBanner.value = "Offline Local Mode: $customFuncName -> $res21"
+                return@launch
+            }
+            val res = repo.updateClient21DigitRegisters(
                 clientId = client.id,
                 customVarInput21 = customVarInput21,
                 customFuncInput21 = customFuncInput21,
@@ -1113,7 +1296,11 @@ class NexusTcgViewModel(
         val exactRepoUrl = BuiltInTcgCatalog.exactGitHubRepoUrl(client.baseVariantId)
         val spec = BuiltInTcgCatalog.findBaseSpec(client.baseVariantId)
         viewModelScope.launch {
-            val res = repository.syncBaseClientFromUpstreamGitHubRepo(
+            val repo = repository ?: run {
+                _statusBanner.value = "Offline Local Mode: Verified bundled upstream spec for '${client.clientName}' ($exactRepoUrl • v${spec.protocolVersion})."
+                return@launch
+            }
+            val res = repo.syncBaseClientFromUpstreamGitHubRepo(
                 clientId = client.id,
                 baseVariantId = client.baseVariantId,
                 verifiedUpstreamVersion = spec.protocolVersion
@@ -1165,7 +1352,7 @@ class NexusTcgViewModel(
         _activeCustomVariant.value = null
         if (custom != null) {
             viewModelScope.launch {
-                repository.resetVariantToBaseStandard(custom)
+                repository?.resetVariantToBaseStandard(custom)
             }
         }
         val spec = BuiltInTcgCatalog.findBaseSpec(_selectedBaseVariantId.value)
@@ -1233,7 +1420,29 @@ class NexusTcgViewModel(
             return
         }
         viewModelScope.launch {
-            val res = repository.createVariant(
+            val repo = repository
+            if (repo == null) {
+                val localVariant = TcgVariant(
+                    id = "local_var_${System.currentTimeMillis()}",
+                    userId = currentUserId,
+                    name = name,
+                    baseVariantId = baseVariantId,
+                    resourceName = resourceName,
+                    startingLife = startingLife,
+                    startingHandSize = startingHandSize,
+                    maxResourcePool = maxResourcePool,
+                    combatRule = combatRule,
+                    maxDigitPrecision = if (BuiltInTcgCatalog.supports21DigitRegisters(baseVariantId)) 21L else 10L,
+                    startingLp21 = startingLp21,
+                    customVarInput21 = customVarInput21,
+                    customFuncInput21 = customFuncInput21,
+                    customFuncName = customFuncName
+                )
+                _offlineVariants.value = listOf(localVariant) + _offlineVariants.value
+                _statusBanner.value = "Saved local TCG Engine Variant '$name' (Offline Mode)"
+                return@launch
+            }
+            val res = repo.createVariant(
                 name = name,
                 baseVariantId = baseVariantId,
                 resourceName = resourceName,
@@ -1269,7 +1478,12 @@ class NexusTcgViewModel(
             if (_activeCustomVariant.value?.id == variantId) {
                 _activeCustomVariant.value = null
             }
-            repository.deleteVariant(variantId)
+            val repo = repository
+            if (repo != null) {
+                repo.deleteVariant(variantId)
+            } else {
+                _offlineVariants.value = _offlineVariants.value.filterNot { it.id == variantId }
+            }
         }
     }
 
@@ -1285,7 +1499,25 @@ class NexusTcgViewModel(
             val isCompatibleNow = _selectedBaseVariantId.value == baseVariantId &&
                 (!requiresStrictBase || _activeCustomVariant.value == null)
             val initialStatus = if (isCompatibleNow) "CONNECTED" else "DISCONNECTED"
-            val result = repository.registerClientNode(
+            val repo = repository
+            if (repo == null) {
+                val localNode = ClientNode(
+                    id = "local_node_${System.currentTimeMillis()}",
+                    userId = currentUserId,
+                    clientName = clientName,
+                    clientType = clientType,
+                    endpointUri = endpointUri.ifBlank { "wss://relay.nexustcg.io/${baseVariantId.lowercase()}" },
+                    baseVariantId = baseVariantId,
+                    requiresStrictBase = requiresStrictBase,
+                    connectionStatus = initialStatus,
+                    latencyMs = 15L,
+                    maxDigitPrecision = if (BuiltInTcgCatalog.supports21DigitRegisters(baseVariantId)) 21L else 10L
+                )
+                _offlineClients.value = listOf(localNode) + _offlineClients.value
+                _statusBanner.value = "Included '$clientName' locally (Offline Mode)"
+                return@launch
+            }
+            val result = repo.registerClientNode(
                 clientName = clientName,
                 clientType = clientType,
                 endpointUri = endpointUri.ifBlank { "wss://relay.nexustcg.io/${baseVariantId.lowercase()}" },
@@ -1329,11 +1561,18 @@ class NexusTcgViewModel(
             val newStatus = if (isCompatible) "CONNECTED" else "MISMATCH_BLOCKED"
             val measuredLatency = (12..34).random().toLong()
 
-            repository.updateClientConnectionState(
-                clientId = client.id,
-                newStatus = newStatus,
-                latencyMs = measuredLatency
-            )
+            val repo = repository
+            if (repo != null) {
+                repo.updateClientConnectionState(
+                    clientId = client.id,
+                    newStatus = newStatus,
+                    latencyMs = measuredLatency
+                )
+            } else {
+                _offlineClients.value = _offlineClients.value.map { c ->
+                    if (c.id == client.id) c.copy(connectionStatus = newStatus, latencyMs = measuredLatency) else c
+                }
+            }
 
             val uiProfile = BuiltInTcgCatalog.systemUiProfileFor(client.baseVariantId, client)
             val diagnosticMessage = if (isCompatible) {
@@ -1370,11 +1609,18 @@ class NexusTcgViewModel(
 
     fun disconnectClientNode(client: ClientNode) {
         viewModelScope.launch {
-            repository.updateClientConnectionState(
-                clientId = client.id,
-                newStatus = "DISCONNECTED",
-                latencyMs = client.latencyMs
-            )
+            val repo = repository
+            if (repo != null) {
+                repo.updateClientConnectionState(
+                    clientId = client.id,
+                    newStatus = "DISCONNECTED",
+                    latencyMs = client.latencyMs
+                )
+            } else {
+                _offlineClients.value = _offlineClients.value.map { c ->
+                    if (c.id == client.id) c.copy(connectionStatus = "DISCONNECTED") else c
+                }
+            }
             _statusBanner.value = "Disconnected '${client.clientName}'"
         }
     }
@@ -1388,8 +1634,13 @@ class NexusTcgViewModel(
             return
         }
         viewModelScope.launch {
-            repository.deleteClientNode(clientId).onFailure { e ->
-                _statusBanner.value = e.localizedMessage ?: "Cannot delete locked Base Client."
+            val repo = repository
+            if (repo != null) {
+                repo.deleteClientNode(clientId).onFailure { e ->
+                    _statusBanner.value = e.localizedMessage ?: "Cannot delete locked Base Client."
+                }
+            } else {
+                _offlineClients.value = _offlineClients.value.filterNot { it.id == clientId }
             }
         }
     }
@@ -1412,22 +1663,48 @@ class NexusTcgViewModel(
         if (deckName.isBlank() || customCardName.isBlank()) return
         viewModelScope.launch {
             val templateIds = BuiltInTcgCatalog.cardsForVariant(baseVariantId).map { it.id }
-            val result = repository.createDeck(
-                name = deckName,
-                baseVariantId = baseVariantId,
-                strategyTag = strategyTag,
-                cardIds = templateIds,
-                customCardName = customCardName,
-                customCardCost = customCardCost,
-                customCardAttack = customCardAttack,
-                customCardDefense = customCardDefense,
-                customCardAbility = customCardAbility.ifBlank { "ocgcore 21-digit Lua 5.3 effect triggered on summon." },
-                customAttack21 = customAttack21,
-                customDefense21 = customDefense21,
-                customVarInput21 = customVarInput21,
-                customCodeString21 = customCodeString21,
-                customCodeVarExpr21 = customCodeVarExpr21
-            )
+            val resolvedAbility = customCardAbility.ifBlank { "ocgcore 21-digit Lua 5.3 effect triggered on summon." }
+            val repo = repository
+            val result: Result<String> = if (repo != null && !isOfflineMode) {
+                repo.createDeck(
+                    name = deckName,
+                    baseVariantId = baseVariantId,
+                    strategyTag = strategyTag,
+                    cardIds = templateIds,
+                    customCardName = customCardName,
+                    customCardCost = customCardCost,
+                    customCardAttack = customCardAttack,
+                    customCardDefense = customCardDefense,
+                    customCardAbility = resolvedAbility,
+                    customAttack21 = customAttack21,
+                    customDefense21 = customDefense21,
+                    customVarInput21 = customVarInput21,
+                    customCodeString21 = customCodeString21,
+                    customCodeVarExpr21 = customCodeVarExpr21
+                )
+            } else {
+                val localDeckId = "local_deck_${System.currentTimeMillis()}"
+                val localDeck = CustomDeck(
+                    id = localDeckId,
+                    userId = currentUserId,
+                    name = deckName,
+                    baseVariantId = baseVariantId,
+                    strategyTag = strategyTag,
+                    cardIds = templateIds,
+                    customCardName = customCardName,
+                    customCardCost = customCardCost,
+                    customCardAttack = customCardAttack,
+                    customCardDefense = customCardDefense,
+                    customCardAbility = resolvedAbility,
+                    customAttack21 = customAttack21,
+                    customDefense21 = customDefense21,
+                    customVarInput21 = customVarInput21,
+                    customCodeString21 = customCodeString21,
+                    customCodeVarExpr21 = customCodeVarExpr21
+                )
+                _offlineDecks.value = listOf(localDeck) + _offlineDecks.value
+                Result.success(localDeckId)
+            }
             result.onSuccess { newDeckId ->
                 refreshHandForVariant(_selectedBaseVariantId.value)
                 _statusBanner.value = "Forged deck '$deckName' with signature card '$customCardName' (Code: c$customCodeString21, ATK: $customAttack21)"
@@ -1443,7 +1720,7 @@ class NexusTcgViewModel(
                         customCardCost = customCardCost,
                         customCardAttack = customCardAttack,
                         customCardDefense = customCardDefense,
-                        customCardAbility = customCardAbility.ifBlank { "ocgcore 21-digit Lua 5.3 effect triggered on summon." },
+                        customCardAbility = resolvedAbility,
                         customAttack21 = customAttack21,
                         customDefense21 = customDefense21,
                         customVarInput21 = customVarInput21,
@@ -1458,7 +1735,12 @@ class NexusTcgViewModel(
 
     fun deleteDeck(deckId: String) {
         viewModelScope.launch {
-            repository.deleteDeck(deckId)
+            val repo = repository
+            if (repo != null && !isOfflineMode) {
+                repo.deleteDeck(deckId)
+            } else {
+                _offlineDecks.value = _offlineDecks.value.filterNot { it.id == deckId }
+            }
         }
     }
 
@@ -1487,12 +1769,39 @@ class NexusTcgViewModel(
                 .map { it.clientName }
 
             val resolvedTitle = title.ifBlank { "${BuiltInTcgCatalog.findBaseSpec(baseId).name} Duel Table" }
-            val result = repository.createMatchSession(
-                hostName = currentUserName,
-                title = resolvedTitle,
-                baseVariantId = baseId,
-                connectedClients = compatibleConnectedNames
-            )
+            val repo = repository
+            val result: Result<String> = if (repo != null && !isOfflineMode) {
+                repo.createMatchSession(
+                    hostName = currentUserName,
+                    title = resolvedTitle,
+                    baseVariantId = baseId,
+                    connectedClients = compatibleConnectedNames
+                )
+            } else {
+                val baseSpec = BuiltInTcgCatalog.findBaseSpec(baseId)
+                val localMatchId = "local_duel_${System.currentTimeMillis()}"
+                val localMatch = MatchSession(
+                    id = localMatchId,
+                    hostUserId = currentUserId,
+                    hostName = currentUserName,
+                    title = resolvedTitle,
+                    baseVariantId = baseId,
+                    baseVariantName = baseSpec.name,
+                    connectedClients = compatibleConnectedNames.ifEmpty { listOf("Local Solid Vision AI") },
+                    turnNumber = 1L,
+                    activePhase = "MAIN",
+                    hostLife = baseSpec.startingLife,
+                    opponentLife = baseSpec.startingLife,
+                    hostResources = baseSpec.maxResourcePool.coerceAtMost(5L),
+                    hostMaxResources = baseSpec.maxResourcePool.coerceAtMost(5L),
+                    opponentResources = baseSpec.maxResourcePool.coerceAtMost(5L),
+                    resourceName = baseSpec.resourceName,
+                    actionLog = listOf("LOCAL_DUEL: Started '$resolvedTitle' on $baseId (Offline Mode)"),
+                    status = "ACTIVE"
+                )
+                _offlineMatches.value = listOf(localMatch) + _offlineMatches.value
+                Result.success(localMatchId)
+            }
             result.onSuccess { newId ->
                 _activeMatchId.value = newId
                 _statusBanner.value = "Launched Multi-Client Arena on $baseId"
@@ -1538,14 +1847,14 @@ class NexusTcgViewModel(
             val matchingClients = allClients.filter { it.baseVariantId == match.baseVariantId }
             matchingClients.forEach { client ->
                 if (client.connectionStatus != "CONNECTED") {
-                    repository.updateClientConnectionState(client.id, "CONNECTED", 16L)
+                    repository?.updateClientConnectionState(client.id, "CONNECTED", 16L)
                 }
             }
             val names = (match.connectedClients + matchingClients.map { it.clientName } + currentUserName)
                 .distinct()
                 .take(10)
             val newLogs = (match.actionLog + "CTOS_JOIN_GAME: Bridged ${names.size} clients on ${match.baseVariantId}").takeLast(20)
-            repository.updateMatchState(
+            persistMatchState(
                 matchId = match.id,
                 connectedClients = names,
                 turnNumber = match.turnNumber,
@@ -1574,7 +1883,7 @@ class NexusTcgViewModel(
         if (match != null && match.status != "FINISHED") {
             viewModelScope.launch {
                 val drawLog = "MSG_DRAW [Turn ${match.turnNumber} • ${match.activePhase}]: $currentUserName drew '${drawn.name}' (c${drawn.passcode})"
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = match.turnNumber,
@@ -1613,7 +1922,7 @@ class NexusTcgViewModel(
         viewModelScope.launch {
             val phaseLog = "MSG_NEW_PHASE [Turn ${match.turnNumber}]: $currentUserName shifted phase ${match.activePhase} -> $cleanPhase (${targetTurnPhase.displayName})"
             val mergedLogs = (match.actionLog + listOf(phaseLog) + stepResult.newLogs.drop(1)).takeLast(20)
-            repository.updateMatchState(
+            persistMatchState(
                 matchId = match.id,
                 connectedClients = match.connectedClients,
                 turnNumber = stepResult.updatedState.turnNumber,
@@ -1663,7 +1972,7 @@ class NexusTcgViewModel(
                 TurnPhase.END -> "END"
             }
             viewModelScope.launch {
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = step.updatedState.turnNumber,
@@ -1768,7 +2077,7 @@ class NexusTcgViewModel(
         _statusBanner.value = step.latestLogLine
         if (match != null && match.status != "FINISHED") {
             viewModelScope.launch {
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = step.updatedState.turnNumber,
@@ -1812,7 +2121,7 @@ class NexusTcgViewModel(
         _statusBanner.value = step.latestLogLine
         if (match != null && match.status != "FINISHED") {
             viewModelScope.launch {
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = step.updatedState.turnNumber,
@@ -1851,7 +2160,7 @@ class NexusTcgViewModel(
     fun recordMatchActionLog(match: MatchSession, logLine: String) {
         if (logLine.isBlank()) return
         viewModelScope.launch {
-            repository.updateMatchState(
+            persistMatchState(
                 matchId = match.id,
                 connectedClients = match.connectedClients,
                 turnNumber = match.turnNumber,
@@ -1890,7 +2199,7 @@ class NexusTcgViewModel(
             val nextMax = match.hostMaxResources.coerceIn(1L, ceiling)
             val nextAvail = (match.hostResources + delta).coerceIn(0L, nextMax)
             viewModelScope.launch {
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = match.turnNumber,
@@ -1930,7 +2239,7 @@ class NexusTcgViewModel(
             val nextMax = match.hostMaxResources.coerceIn(1L, ceiling)
             val nextAvail = exactAmount.coerceIn(0L, nextMax)
             viewModelScope.launch {
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = match.turnNumber,
@@ -1960,7 +2269,7 @@ class NexusTcgViewModel(
         if (match != null && match.status != "FINISHED") {
             val refilled = match.hostMaxResources.coerceAtLeast(1L)
             viewModelScope.launch {
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = match.turnNumber,
@@ -1999,7 +2308,7 @@ class NexusTcgViewModel(
             val nextMax = (match.hostMaxResources + 1L).coerceAtMost(ceiling)
             val nextAvail = (match.hostResources + 1L).coerceAtMost(nextMax)
             viewModelScope.launch {
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = match.turnNumber,
@@ -2054,7 +2363,7 @@ class NexusTcgViewModel(
             val logEntry = "MOVE_HISTORY [Turn ${match.turnNumber} • ${match.activePhase}]: Player 1 ($currentUserName) moved '${card.name}' to Field [$targetFieldSlot] (${card.attack21}/${card.defense21})"
             val newLogs = (match.actionLog + logEntry).takeLast(20)
 
-            repository.updateMatchState(
+            persistMatchState(
                 matchId = match.id,
                 connectedClients = match.connectedClients,
                 turnNumber = match.turnNumber,
@@ -2078,6 +2387,15 @@ class NexusTcgViewModel(
                 turnNumber = match.turnNumber,
                 activePhase = match.activePhase,
                 detail = "$currentUserName • ATK ${card.attack} / DEF ${card.defense}"
+            )
+            appendLocalOfflineEvent(
+                matchId = match.id,
+                actorLabel = "Player 1",
+                eventType = PersistentGameEventType.CARD_PLAYED,
+                summary = "Player 1 played '${card.name}' to $targetFieldSlot",
+                detail = "$currentUserName • ATK ${card.attack} / DEF ${card.defense}",
+                turnNumber = match.turnNumber,
+                activePhase = match.activePhase
             )
         }
     }
@@ -2164,7 +2482,7 @@ class NexusTcgViewModel(
             _playerHand.value = (_playerHand.value + drawnCard).take(8)
             telemetryTracker.recordCardDrawn(drawnCard, match.id)
 
-            repository.updateMatchState(
+            persistMatchState(
                 matchId = match.id,
                 connectedClients = match.connectedClients,
                 turnNumber = nextTurn,
@@ -2201,6 +2519,15 @@ class NexusTcgViewModel(
                     activePhase = "COMBAT"
                 )
             }
+            appendLocalOfflineEvent(
+                matchId = match.id,
+                actorLabel = "Player 1 ($currentUserName)",
+                eventType = PersistentGameEventType.LIFE_CHANGED,
+                summary = "$clientPeerName LP reduced by $damageToOpponent (now $newOpponentLife)",
+                detail = "Turn ${match.turnNumber} Combat • Counter: -$counterDamage LP",
+                turnNumber = match.turnNumber,
+                activePhase = "COMBAT"
+            )
 
             if (isFinished && winner.isNotBlank() && DiscordApiService.bridgeConfig.value.autoBroadcastMatchWinner) {
                 val finishedMatch = match.copy(
@@ -2225,7 +2552,12 @@ class NexusTcgViewModel(
 
     fun deleteMatch(matchId: String) {
         viewModelScope.launch {
-            repository.deleteMatchSession(matchId)
+            val repo = repository
+            if (repo != null && !isOfflineMode) {
+                repo.deleteMatchSession(matchId)
+            } else {
+                _offlineMatches.value = _offlineMatches.value.filterNot { it.id == matchId }
+            }
             if (_activeMatchId.value == matchId) {
                 _activeMatchId.value = null
             }
@@ -2792,11 +3124,12 @@ class NexusTcgViewModel(
     // --- Discord Roleplay Servers, Character Personas & Chat Review Operations ---
 
     private fun seedStarterDiscordRoleplayHub() {
+        val repo = repository ?: return
         viewModelScope.launch {
             val mode = DiscordApiService.activeConnectionMode()
 
             // 1. Seed Discord Roleplay Servers (Base MR5 & 21-Digit EDOPro Custom Clone)
-            val dominoServerRes = repository.createDiscordServerHub(
+            val dominoServerRes = repo.createDiscordServerHub(
                 guildId = "108911002200330044",
                 serverName = "Domino City Duel Academy RP",
                 channelId = "108911002200330099",
@@ -2807,7 +3140,7 @@ class NexusTcgViewModel(
                 isConnected = true,
                 memberCount = 412L
             )
-            val customCloneServerRes = repository.createDiscordServerHub(
+            val customCloneServerRes = repo.createDiscordServerHub(
                 guildId = "108922004400660088",
                 serverName = "Ignis 21-Digit Boss Raid RP",
                 channelId = "108922004400660099",
@@ -2824,7 +3157,7 @@ class NexusTcgViewModel(
             _selectedDiscordServerId.value = primaryServerId
 
             // 2. Seed TCG Roleplay Character Personas
-            repository.createRpCharacterPersona(
+            repo.createRpCharacterPersona(
                 characterName = "Kaiba-Omega",
                 characterTitle = "Singularity Overseer",
                 factionOrArchetype = "Blue-Eyes / 21-Digit Wyrm",
@@ -2837,7 +3170,7 @@ class NexusTcgViewModel(
                 summonChant = "Shatter the 64-bit barrier and descend from the 21-digit code register! I summon Custom Project: Singularity Dragon!",
                 isActivePersona = true
             )
-            repository.createRpCharacterPersona(
+            repo.createRpCharacterPersona(
                 characterName = "Atem-Prime",
                 characterTitle = "Sovereign Pharaoh of Domino",
                 factionOrArchetype = "Spellcaster / Sovereign Dragon",
@@ -2850,7 +3183,7 @@ class NexusTcgViewModel(
                 summonChant = "Heed the ancient covenant of Domino Sanctuary! Rise, Azure-Eyes Sovereign Dragon!",
                 isActivePersona = false
             )
-            repository.createRpCharacterPersona(
+            repo.createRpCharacterPersona(
                 characterName = "Lyra Vance",
                 characterTitle = "Cyberse Link Architect",
                 factionOrArchetype = "Cyberse / Accesscode Link-4",
@@ -2865,7 +3198,7 @@ class NexusTcgViewModel(
             )
 
             // 3. Seed realistic Discord RP chat messages for review and roleplay interaction
-            repository.createDiscordRpMessage(
+            repo.createDiscordRpMessage(
                 serverId = primaryServerId,
                 channelName = "#duel-arena-rp",
                 senderName = "Chancellor Crowler-RP",
@@ -2878,7 +3211,7 @@ class NexusTcgViewModel(
                 deliveryStatus = "REVIEWED_FROM_DISCORD",
                 reviewedFlag = false
             )
-            repository.createDiscordRpMessage(
+            repo.createDiscordRpMessage(
                 serverId = primaryServerId,
                 channelName = "#duel-arena-rp",
                 senderName = "Rival Zane_Cyber",
@@ -2891,7 +3224,7 @@ class NexusTcgViewModel(
                 deliveryStatus = "SYNCED_RP_CHANNEL",
                 reviewedFlag = false
             )
-            repository.createDiscordRpMessage(
+            repo.createDiscordRpMessage(
                 serverId = customServerId,
                 channelName = "#singularity-throne",
                 senderName = "Kaiba-Omega",
@@ -2927,8 +3260,12 @@ class NexusTcgViewModel(
     ) {
         if (serverName.isBlank()) return
         viewModelScope.launch {
+            val repo = repository ?: run {
+                _statusBanner.value = "Offline Local Mode: Sign in with Google to persist Discord RP servers in Cloud Sync."
+                return@launch
+            }
             val mode = DiscordApiService.activeConnectionMode()
-            val res = repository.createDiscordServerHub(
+            val res = repo.createDiscordServerHub(
                 guildId = guildId.ifBlank { "1089${(100000000..999999999).random()}" },
                 serverName = serverName,
                 channelId = channelId.ifBlank { "1089${(100000000..999999999).random()}" },
@@ -2941,7 +3278,7 @@ class NexusTcgViewModel(
             )
             res.onSuccess { newServerId ->
                 _selectedDiscordServerId.value = newServerId
-                repository.createDiscordRpMessage(
+                repo.createDiscordRpMessage(
                     serverId = newServerId,
                     channelName = if (channelName.startsWith("#")) channelName else "#$channelName",
                     senderName = "NexusTCG Bridge Bot",
@@ -2991,7 +3328,7 @@ class NexusTcgViewModel(
             } else {
                 "CHAIN_CHECK_MR5: Battle Phase Declaration • 4000 ATK"
             }
-            repository.createDiscordRpMessage(
+            repository?.createDiscordRpMessage(
                 serverId = server.id,
                 channelName = server.channelName,
                 senderName = samplePeerName,
@@ -3011,7 +3348,7 @@ class NexusTcgViewModel(
     fun toggleDiscordServerConnection(server: DiscordServerHub) {
         viewModelScope.launch {
             val nextConnected = !server.isConnected
-            repository.updateDiscordServerConnection(
+            repository?.updateDiscordServerConnection(
                 serverId = server.id,
                 isConnected = nextConnected,
                 connectionMode = DiscordApiService.activeConnectionMode()
@@ -3026,7 +3363,7 @@ class NexusTcgViewModel(
 
     fun deleteDiscordServer(serverId: String) {
         viewModelScope.launch {
-            repository.deleteDiscordServerHub(serverId)
+            repository?.deleteDiscordServerHub(serverId)
             if (_selectedDiscordServerId.value == serverId) {
                 val remaining = (discordServersState.value as? UiState.Success)?.data
                     .orEmpty()
@@ -3050,11 +3387,15 @@ class NexusTcgViewModel(
     ) {
         if (characterName.isBlank()) return
         viewModelScope.launch {
+            val repo = repository ?: run {
+                _statusBanner.value = "Offline Local Mode: Sign in with Google to save Cloud RP Personas."
+                return@launch
+            }
             val existingChars = (rpCharactersState.value as? UiState.Success)?.data.orEmpty()
             existingChars.filter { it.isActivePersona }.forEach { active ->
-                repository.updateRpCharacterActiveState(active.id, false)
+                repo.updateRpCharacterActiveState(active.id, false)
             }
-            val res = repository.createRpCharacterPersona(
+            val res = repo.createRpCharacterPersona(
                 characterName = characterName,
                 characterTitle = characterTitle,
                 factionOrArchetype = factionOrArchetype,
@@ -3078,11 +3419,12 @@ class NexusTcgViewModel(
 
     fun activateRpCharacter(character: RpCharacterPersona) {
         viewModelScope.launch {
+            val repo = repository ?: return@launch
             val allChars = (rpCharactersState.value as? UiState.Success)?.data.orEmpty()
             allChars.forEach { item ->
                 val shouldBeActive = item.id == character.id
                 if (item.isActivePersona != shouldBeActive) {
-                    repository.updateRpCharacterActiveState(item.id, shouldBeActive)
+                    repo.updateRpCharacterActiveState(item.id, shouldBeActive)
                 }
             }
             _statusBanner.value = "Switched active Discord RP Character to '${character.characterName} [${character.characterTitle}]'"
@@ -3091,7 +3433,8 @@ class NexusTcgViewModel(
 
     fun updateCharacterLp21(character: RpCharacterPersona, newLp21: String) {
         viewModelScope.launch {
-            val res = repository.updateRpCharacterLp21(character.id, newLp21)
+            val repo = repository ?: return@launch
+            val res = repo.updateRpCharacterLp21(character.id, newLp21)
             res.onSuccess { cleanLp ->
                 _statusBanner.value = "Updated ${character.characterName}'s LP to ${BigInt21Engine.formatWithCommas(cleanLp)} (${cleanLp.length}/21 digits)"
             }
@@ -3100,7 +3443,7 @@ class NexusTcgViewModel(
 
     fun deleteRpCharacter(characterId: String) {
         viewModelScope.launch {
-            repository.deleteRpCharacterPersona(characterId)
+            repository?.deleteRpCharacterPersona(characterId)
         }
     }
 
@@ -3131,7 +3474,11 @@ class NexusTcgViewModel(
                 baseVariantId = server.baseVariantId
             )
 
-            val res = repository.createDiscordRpMessage(
+            val repo = repository ?: run {
+                _statusBanner.value = "[$senderName] dispatched via Webhook ($deliveryStatus)"
+                return@launch
+            }
+            val res = repo.createDiscordRpMessage(
                 serverId = server.id,
                 channelName = server.channelName,
                 senderName = senderName,
@@ -3205,7 +3552,7 @@ class NexusTcgViewModel(
     fun toggleDiscordMessageReviewed(message: DiscordRpMessage) {
         viewModelScope.launch {
             val nextReviewed = !message.reviewedFlag
-            repository.toggleDiscordMessageReviewed(message.id, nextReviewed)
+            repository?.toggleDiscordMessageReviewed(message.id, nextReviewed)
             _statusBanner.value = if (nextReviewed) {
                 "Marked message from ${message.senderName} as Reviewed & Ruling Verified"
             } else {
@@ -3216,7 +3563,7 @@ class NexusTcgViewModel(
 
     fun deleteDiscordMessage(messageId: String) {
         viewModelScope.launch {
-            repository.deleteDiscordRpMessage(messageId)
+            repository?.deleteDiscordRpMessage(messageId)
         }
     }
 
@@ -3228,7 +3575,7 @@ class NexusTcgViewModel(
         viewModelScope.launch {
             val servers = (discordServersState.value as? UiState.Success)?.data.orEmpty()
             servers.forEach { server ->
-                repository.updateDiscordServerConnection(
+                repository?.updateDiscordServerConnection(
                     serverId = server.id,
                     isConnected = if (enabled) server.isConnected else false,
                     connectionMode = newMode
@@ -3258,7 +3605,7 @@ class NexusTcgViewModel(
         viewModelScope.launch {
             val servers = (discordServersState.value as? UiState.Success)?.data.orEmpty()
             servers.forEach { server ->
-                repository.updateDiscordServerConnection(
+                repository?.updateDiscordServerConnection(
                     serverId = server.id,
                     isConnected = integrationEnabled,
                     connectionMode = newMode
@@ -3274,7 +3621,7 @@ class NexusTcgViewModel(
         viewModelScope.launch {
             val servers = (discordServersState.value as? UiState.Success)?.data.orEmpty()
             servers.forEach { server ->
-                repository.updateDiscordServerConnection(
+                repository?.updateDiscordServerConnection(
                     serverId = server.id,
                     isConnected = server.isConnected,
                     connectionMode = newMode
@@ -3318,7 +3665,7 @@ class NexusTcgViewModel(
         val activeServer = servers.firstOrNull { it.id == _selectedDiscordServerId.value }
             ?: servers.firstOrNull()
             ?: return
-        repository.createDiscordRpMessage(
+        repository?.createDiscordRpMessage(
             serverId = activeServer.id,
             channelName = record.channelLabel,
             senderName = "NexusTCG Webhook Bridge",
@@ -3422,10 +3769,10 @@ class NexusTcgViewModel(
                 ?.firstOrNull { it.baseVariantId == baseId }
             val channelLabel = DiscordApiService.bridgeConfig.value.designatedChannelName
 
-            // Persist winner to Firestore match if declaring victory on an active match
+            // Persist winner to match if declaring victory on an active match
             if (match != null && match.status != "FINISHED") {
                 val winnerLog = "DUEL COMPLETE! Winner: $resolvedWinner (Broadcasted to Discord $channelLabel)."
-                repository.updateMatchState(
+                persistMatchState(
                     matchId = match.id,
                     connectedClients = match.connectedClients,
                     turnNumber = match.turnNumber,
@@ -3472,5 +3819,131 @@ class NexusTcgViewModel(
 
     companion object {
         private const val TAG = "NexusTcgVM"
+
+        private fun buildStarterOfflineClients(userId: String): List<ClientNode> = listOf(
+            ClientNode(
+                id = "offline_edopro_base",
+                userId = userId,
+                clientName = "ProjectIgnis EDOPro Base Client",
+                clientType = "EDOPro Base (ProjectIgnis/EDOPro)",
+                endpointUri = "https://github.com/ProjectIgnis/EDOPro",
+                baseVariantId = "EDOPRO_BASE_MR5",
+                requiresStrictBase = true,
+                connectionStatus = "CONNECTED",
+                latencyMs = 0L,
+                maxDigitPrecision = 10L
+            ),
+            ClientNode(
+                id = "offline_edopro_clone",
+                userId = userId,
+                clientName = "EDOPro Custom Project Clone (IgnisForge 21-Digit)",
+                clientType = "EDOPro Custom Clone (21-Digit Vars/Funcs)",
+                endpointUri = "local://sandbox/edopro-custom",
+                baseVariantId = "EDOPRO_CUSTOM_FORK",
+                requiresStrictBase = false,
+                connectionStatus = "CONNECTED",
+                latencyMs = 0L,
+                maxDigitPrecision = 21L,
+                customCodeString21 = BigInt21Engine.DEFAULT_CODE_STRING_21,
+                customCodeVarExpr21 = BigInt21Engine.DEFAULT_CODE_VAR_EXPR_21
+            ),
+            ClientNode(
+                id = "offline_forge_base",
+                userId = userId,
+                clientName = "Card-Forge: Forge MTG Standalone Client",
+                clientType = "Card-Forge Standalone (Card-Forge/forge)",
+                endpointUri = "https://github.com/Card-Forge/forge",
+                baseVariantId = "FORGE_MTG_BASE",
+                requiresStrictBase = true,
+                connectionStatus = "CONNECTED",
+                latencyMs = 0L,
+                maxDigitPrecision = 10L
+            ),
+            ClientNode(
+                id = "offline_forge_clone",
+                userId = userId,
+                clientName = "Clone Card-Forge for Custom Projects (21-Digit SVar)",
+                clientType = "Card-Forge Custom Clone (customcards/*.txt)",
+                endpointUri = "local://sandbox/forge-custom",
+                baseVariantId = "FORGE_CUSTOM_CLONE",
+                requiresStrictBase = false,
+                connectionStatus = "CONNECTED",
+                latencyMs = 0L,
+                maxDigitPrecision = 21L,
+                customCodeVarExpr21 = BigInt21Engine.DEFAULT_FORGE_CUSTOM_VAR_EXPR_21
+            ),
+            ClientNode(
+                id = "offline_hybrid_mix",
+                userId = userId,
+                clientName = "Mixed Client: Clone Forge + Clone EDOPro Custom",
+                clientType = "Extensible Hybrid (Forge + EDOPro 21d)",
+                endpointUri = "local://sandbox/hybrid-mix",
+                baseVariantId = "HYBRID_FORGE_EDOPRO_MIX",
+                requiresStrictBase = false,
+                connectionStatus = "CONNECTED",
+                latencyMs = 0L,
+                maxDigitPrecision = 21L,
+                customCodeVarExpr21 = BigInt21Engine.DEFAULT_HYBRID_MIX_VAR_EXPR_21
+            )
+        )
+
+        private fun buildStarterOfflineDecks(userId: String): List<CustomDeck> = listOf(
+            CustomDeck(
+                id = "offline_deck_edopro_mr5",
+                userId = userId,
+                name = "Ignis Sovereign Dragon (.ydk)",
+                baseVariantId = "EDOPRO_BASE_MR5",
+                strategyTag = "Master Rule 5 (Local)",
+                cardIds = BuiltInTcgCatalog.cardsForVariant("EDOPRO_BASE_MR5").map { it.id },
+                customCardName = "Blue-Eyes Ignis Sovereign",
+                customCardCost = 8L,
+                customCardAttack = 3000L,
+                customCardDefense = 2500L,
+                customCardAbility = "[ocgcore] Cannot be destroyed by card effects. Banishes 1 opposing monster.",
+                customAttack21 = "3000",
+                customDefense21 = "2500",
+                customVarInput21 = "8000",
+                customCodeString21 = "89631139",
+                customCodeVarExpr21 = "s.code_var_21 = \"89631139\""
+            ),
+            CustomDeck(
+                id = "offline_deck_custom_21d",
+                userId = userId,
+                name = "Custom Project Expansion (.cdb + 21-Digit Lua)",
+                baseVariantId = "EDOPRO_CUSTOM_FORK",
+                strategyTag = "21-Digit Custom Expansion (Local)",
+                cardIds = BuiltInTcgCatalog.cardsForVariant("EDOPRO_CUSTOM_FORK").map { it.id },
+                customCardName = "Custom Project: Singularity Overlord",
+                customCardCost = 12L,
+                customCardAttack = 999999999999999999L,
+                customCardDefense = 999999999999999999L,
+                customCardAbility = "[c900001010000000000021.lua] 21-Digit Code String & Register.",
+                customAttack21 = "999999999999999999999",
+                customDefense21 = "888888888888888888888",
+                customVarInput21 = "999999999999999999999",
+                customCodeString21 = BigInt21Engine.DEFAULT_CODE_STRING_21,
+                customCodeVarExpr21 = BigInt21Engine.DEFAULT_CODE_VAR_EXPR_21
+            )
+        )
+
+        private fun buildStarterOfflineMatch(userId: String, userName: String): MatchSession = MatchSession(
+            id = "local_offline_duel",
+            hostUserId = userId,
+            hostName = userName,
+            title = "Local Solid Vision Duel (MR5 • 8000 LP)",
+            baseVariantId = "EDOPRO_BASE_MR5",
+            baseVariantName = BuiltInTcgCatalog.findBaseSpec("EDOPRO_BASE_MR5").name,
+            connectedClients = listOf("Local Solid Vision Arena"),
+            turnNumber = 1L,
+            activePhase = "MAIN",
+            hostLife = 8000L,
+            opponentLife = 8000L,
+            hostResources = 5L,
+            hostMaxResources = 5L,
+            opponentResources = 5L,
+            resourceName = "Summon/Chain",
+            actionLog = listOf("LOCAL_MODE: Battle City Solid Vision Tabletop ready offline (8000 LP)."),
+            status = "ACTIVE"
+        )
     }
 }

@@ -301,12 +301,49 @@ fun TcgVisualCardItem(
                     .fillMaxWidth()
                     .height(115.dp)
             ) {
-                Image(
-                    painter = painterResource(id = card.artResId),
-                    contentDescription = card.name,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+                val resolvedArtResId = card.artResId?.takeIf {
+                    it != 0 && it != com.example.R.drawable.ic_launcher_foreground
+                }
+                if (resolvedArtResId != null) {
+                    Image(
+                        painter = painterResource(id = resolvedArtResId),
+                        contentDescription = card.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF0B111E),
+                                        Color(0xFF151F34),
+                                        Color(0xFF0E1424)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = card.pipCost.ifBlank { "{C}" },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = card.cardType.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

@@ -53,6 +53,7 @@ object BigInt21Engine {
         "ADD_21",
         "MUL_21",
         "SUB_21",
+        "DIV_21",
         "MOD_21",
         "SCALE_ATK_LP_21"
     )
@@ -173,6 +174,7 @@ object BigInt21Engine {
             "ADD_21" -> a.add(b)
             "MUL_21" -> a.multiply(b)
             "SUB_21" -> a.subtract(b).max(MIN_21_BIGINT)
+            "DIV_21" -> if (b == BigInteger.ZERO) BigInteger.ZERO else a.divide(b)
             "MOD_21" -> {
                 val divisor = if (b <= MIN_21_BIGINT) BigInteger.ONE else b
                 a.mod(divisor)
@@ -439,7 +441,7 @@ data class CardTemplate(
     val attack21: String = attack.toString(),
     val defense21: String = defense.toString(),
     val abilityText: String,
-    val artResId: Int,
+    val artResId: Int? = null,
     val cardOrigin: CardOrigin = CardOrigin.CANON_ORIGINAL,
     val linkedCanonCardId: String = "",
     val splitOffSetId: String = "",

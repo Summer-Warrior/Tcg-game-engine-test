@@ -161,12 +161,15 @@ data class CardInteractionMetric(
 }
 
 data class CustomCardUsageReportSnapshot(
+    val reportId: String = "",
     val schemaVersion: String = CardUsageTelemetryTracker.REPORT_SCHEMA_VERSION,
-    val sourceEngineRepo: String = CodeStringExporter.GAME_ENGINE_REPO,
+    val sourceAppRepo: String = CodeStringExporter.GAME_ENGINE_REPO,
     val sourceEnginePackage: String = CodeStringExporter.GAME_ENGINE_PACKAGE,
     val targetCardMakerRepo: String = CodeStringExporter.CARD_MAKER_REPO,
     val targetCardMakerPackage: String = CodeStringExporter.CARD_MAKER_PACKAGE,
+    val engineCommitSha: String = CardUsageTelemetryTracker.DEFAULT_ENGINE_COMMIT_SHA,
     val generatedAtUtc: String = "",
+    val baseVariantId: String = "ULTIMATE_TCG_WIP",
     val totalMatchesTracked: Int = 0,
     val archivedReportCount: Int = 0,
     val cards: List<CardUsageMetric> = emptyList(),
@@ -177,14 +180,22 @@ data class CustomCardUsageReportSnapshot(
     val hasRealTelemetry: Boolean get() = cards.isNotEmpty() || interactions.isNotEmpty()
 
     fun toJsonString(): String {
+        val timestamp = generatedAtUtc.ifBlank { currentUtcIso() }
+        val resolvedReportId = reportId.ifBlank { "usage_${System.currentTimeMillis()}" }
+        val resolvedBaseVariantId = baseVariantId.ifBlank {
+            cards.firstOrNull()?.targetClientId?.ifBlank { "ULTIMATE_TCG_WIP" } ?: "ULTIMATE_TCG_WIP"
+        }
         val root = JSONObject().apply {
+            put("reportId", resolvedReportId)
             put("schemaVersion", schemaVersion)
             put("reportType", "CustomCardUsageReport")
-            put("sourceEngineRepo", sourceEngineRepo)
+            put("sourceAppRepo", sourceAppRepo)
             put("sourceEnginePackage", sourceEnginePackage)
             put("targetCardMakerRepo", targetCardMakerRepo)
             put("targetCardMakerPackage", targetCardMakerPackage)
-            put("generatedAtUtc", generatedAtUtc.ifBlank { currentUtcIso() })
+            put("engineCommitSha", engineCommitSha)
+            put("generatedAt", timestamp)
+            put("baseVariantId", resolvedBaseVariantId)
             put("totalMatchesTracked", totalMatchesTracked)
             put(
                 "originBreakdown",
@@ -194,8 +205,8 @@ data class CustomCardUsageReportSnapshot(
                     put("originalOcCards", cards.count { it.cardOrigin == CardOrigin.ORIGINAL_OC_CARD })
                 }
             )
-            put("cardMetrics", JSONArray().apply { cards.forEach { put(it.toJson()) } })
-            put("interactionMetrics", JSONArray().apply { interactions.forEach { put(it.toJson()) } })
+            put("cardStats", JSONArray().apply { cards.forEach { put(it.toJson()) } })
+            put("interactions", JSONArray().apply { interactions.forEach { put(it.toJson()) } })
         }
         return root.toString(2)
     }
@@ -223,6 +234,7 @@ class CardUsageTelemetryTracker {
 
     companion object {
         const val REPORT_SCHEMA_VERSION = "1.0.0"
+        const val DEFAULT_ENGINE_COMMIT_SHA = "v4.0-main"
         private const val PREFS_NAME = "nexus_tcg_card_usage_telemetry_v1"
         private const val KEY_ACTIVE_JSON = "active_report_json"
         private const val KEY_ARCHIVED_COUNT = "archived_report_count"
@@ -233,6 +245,8 @@ class CardUsageTelemetryTracker {
     private val activeMatchPlayedCardKeys = LinkedHashSet<String>()
     private val activeMatchIncludedCardKeys = LinkedHashSet<String>()
     private var activeMatchId: String = "local_session"
+    private var activeBaseVariantId: String = "ULTIMATE_TCG_WIP"
+    private var currentReportId: String = "usage_${System.currentTimeMillis()}"
     private var totalMatchesTracked: Int = 0
     private var archivedReportCount: Int = 0
     private var appContext: Context? = null
@@ -530,6 +544,9 @@ class CardUsageTelemetryTracker {
     private fun metricKey(card: CardTemplate): String = "${card.baseVariantId}:${card.id}"
 
     private fun getOrCreateMetric(card: CardTemplate): CardUsageMetric {
+        if (card.baseVariantId.isNotBlank()) {
+            activeBaseVariantId = card.baseVariantId
+        }
         val key = metricKey(card)
         return cardMetricsMap.getOrPut(key) {
             val digitsOnly = card.passcode.filter { it.isDigit() }.take(21)
@@ -547,12 +564,19 @@ class CardUsageTelemetryTracker {
     }
 
     private fun buildCurrentSnapshot(): CustomCardUsageReportSnapshot {
+        val sortedCards = cardMetricsMap.values.sortedByDescending { it.timesPlayed + it.timesActivated + it.timesDrawn }
+        val resolvedBaseVariant = sortedCards.firstOrNull()?.targetClientId?.ifBlank { activeBaseVariantId }
+            ?: activeBaseVariantId
         return CustomCardUsageReportSnapshot(
+            reportId = currentReportId.ifBlank { "usage_${System.currentTimeMillis()}" },
             schemaVersion = REPORT_SCHEMA_VERSION,
+            sourceAppRepo = CodeStringExporter.GAME_ENGINE_REPO,
+            engineCommitSha = DEFAULT_ENGINE_COMMIT_SHA,
             generatedAtUtc = NexusHubBridgeService.currentIsoUtc(),
+            baseVariantId = resolvedBaseVariant,
             totalMatchesTracked = totalMatchesTracked,
             archivedReportCount = archivedReportCount,
-            cards = cardMetricsMap.values.sortedByDescending { it.timesPlayed + it.timesActivated + it.timesDrawn },
+            cards = sortedCards,
             interactions = interactionMetricsMap.values.sortedByDescending { it.occurrenceCount }
         )
     }
@@ -573,8 +597,12 @@ class CardUsageTelemetryTracker {
     private fun restoreFromJson(rawJson: String) {
         runCatching {
             val root = JSONObject(rawJson)
+            val savedReportId = root.optString("reportId", "").trim()
+            if (savedReportId.isNotEmpty()) currentReportId = savedReportId
+            val savedBase = root.optString("baseVariantId", "").trim()
+            if (savedBase.isNotEmpty()) activeBaseVariantId = savedBase
             totalMatchesTracked = root.optInt("totalMatchesTracked", 0)
-            val cardsArr = root.optJSONArray("cardMetrics")
+            val cardsArr = root.optJSONArray("cardStats") ?: root.optJSONArray("cardMetrics")
             if (cardsArr != null) {
                 for (i in 0 until cardsArr.length()) {
                     val o = cardsArr.optJSONObject(i) ?: continue
@@ -584,7 +612,7 @@ class CardUsageTelemetryTracker {
                     }
                 }
             }
-            val interArr = root.optJSONArray("interactionMetrics")
+            val interArr = root.optJSONArray("interactions") ?: root.optJSONArray("interactionMetrics")
             if (interArr != null) {
                 for (i in 0 until interArr.length()) {
                     val o = interArr.optJSONObject(i) ?: continue

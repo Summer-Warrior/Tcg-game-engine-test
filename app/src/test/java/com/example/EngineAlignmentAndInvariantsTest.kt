@@ -2,6 +2,7 @@ package com.example
 
 import com.example.data.AlignmentEvaluationInput
 import com.example.data.AlignmentHealthState
+import com.example.data.BigInt21Engine
 import com.example.data.CardCodeValidator
 import com.example.data.CardContextMode
 import com.example.data.CardOrigin
@@ -467,14 +468,25 @@ class EngineAlignmentAndInvariantsTest {
         assertTrue(snap.totalInteractionsRecorded >= 2)
 
         val json = JSONObject(snap.toJsonString())
+        assertTrue(json.getString("reportId").isNotBlank())
         assertEquals("1.0.0", json.getString("schemaVersion"))
+        assertEquals("Summer-Warrior/Tcg-game-engine-test", json.getString("sourceAppRepo"))
+        assertTrue(json.has("engineCommitSha"))
+        assertTrue(json.getString("generatedAt").isNotBlank())
+        assertEquals("EDOPRO_CUSTOM_FORK", json.getString("baseVariantId"))
+        assertEquals(1, json.getInt("totalMatchesTracked"))
         assertEquals("CustomCardUsageReport", json.getString("reportType"))
         val breakdown = json.getJSONObject("originBreakdown")
         assertEquals(1, breakdown.getInt("canonOriginalCards"))
         assertEquals(1, breakdown.getInt("fanAlternateVariantCards"))
         assertEquals(1, breakdown.getInt("originalOcCards"))
-        assertEquals(3, json.getJSONArray("cardMetrics").length())
-        assertTrue(json.getJSONArray("interactionMetrics").length() >= 2)
+        assertEquals(3, json.getJSONArray("cardStats").length())
+        val interactionsArr = json.getJSONArray("interactions")
+        assertTrue(interactionsArr.length() >= 2)
+        val firstInteraction = interactionsArr.getJSONObject(0)
+        assertTrue(firstInteraction.getString("sourceCardOrigin").isNotBlank())
+        assertTrue(firstInteraction.getString("targetCardOrigin").isNotBlank())
+        assertTrue(firstInteraction.getInt("occurrenceCount") >= 1)
 
         // Archive & reset returns cleanly to empty live counters
         tracker.archiveAndReset()
@@ -482,6 +494,24 @@ class EngineAlignmentAndInvariantsTest {
         assertFalse(afterReset.hasRealTelemetry)
         assertEquals(0, afterReset.cards.size)
         assertEquals(1, afterReset.archivedReportCount)
+    }
+
+    @Test
+    fun bigInt21Div21PerformsSafeIntegerDivisionAndHandlesZero() {
+        assertTrue("DIV_21 must be listed in supportedFunctions", "DIV_21" in BigInt21Engine.supportedFunctions)
+        assertEquals("40", BigInt21Engine.evaluateFunction21("DIV_21", "1000", "25"))
+        assertEquals(
+            "333333333333333333333",
+            BigInt21Engine.evaluateFunction21("DIV_21", "999999999999999999999", "3")
+        )
+        assertEquals(
+            "0",
+            BigInt21Engine.evaluateFunction21("DIV_21", "123456789012345678901", "0")
+        )
+        assertEquals(
+            "0",
+            BigInt21Engine.evaluateFunction21("DIV_21", "5000", "0000")
+        )
     }
 
     @Test

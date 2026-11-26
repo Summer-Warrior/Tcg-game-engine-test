@@ -212,19 +212,39 @@ fun AppNavigation(
     initialTarget: DeepLinkNavigationTarget = DeepLinkNavigationTarget()
 ) {
     val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    var isOfflineGuestMode by rememberSaveable { mutableStateOf(false) }
     val user = currentUser
-    if (user == null) {
-        AuthScreen(onAuthSuccess = {})
-    } else {
-        val uid = user.uid
-        val displayName = user.displayName?.takeIf { it.isNotBlank() }
-            ?: user.email?.substringBefore("@")
-            ?: "Commander"
-        key(uid) {
-            NexusTcgMainScreen(
-                currentUserId = uid,
-                currentUserName = displayName,
-                initialTarget = initialTarget
+    when {
+        user != null -> {
+            val uid = user.uid
+            val displayName = user.displayName?.takeIf { it.isNotBlank() }
+                ?: user.email?.substringBefore("@")
+                ?: "Commander"
+            key(uid) {
+                NexusTcgMainScreen(
+                    currentUserId = uid,
+                    currentUserName = displayName,
+                    isOfflineMode = false,
+                    onExitOfflineMode = {},
+                    initialTarget = initialTarget
+                )
+            }
+        }
+        isOfflineGuestMode -> {
+            key("local_offline_duelist") {
+                NexusTcgMainScreen(
+                    currentUserId = "local_offline_duelist",
+                    currentUserName = "Offline Duelist",
+                    isOfflineMode = true,
+                    onExitOfflineMode = { isOfflineGuestMode = false },
+                    initialTarget = initialTarget
+                )
+            }
+        }
+        else -> {
+            AuthScreen(
+                onAuthSuccess = { isOfflineGuestMode = false },
+                onContinueOffline = { isOfflineGuestMode = true }
             )
         }
     }
@@ -235,6 +255,8 @@ fun AppNavigation(
 fun NexusTcgMainScreen(
     currentUserId: String,
     currentUserName: String,
+    isOfflineMode: Boolean = false,
+    onExitOfflineMode: () -> Unit = {},
     initialTarget: DeepLinkNavigationTarget = DeepLinkNavigationTarget()
 ) {
     val context = LocalContext.current
@@ -246,20 +268,33 @@ fun NexusTcgMainScreen(
     val registryBundle = remember(context) { RegistryAssetLoader.loadAll(context) }
 
     val viewModel: NexusTcgViewModel = viewModel(
-        key = currentUserId,
+        key = "${currentUserId}_${if (isOfflineMode) "offline" else "cloud"}",
         factory = viewModelFactory {
             initializer {
-                val app = checkNotNull(this[APPLICATION_KEY]) as Application
-                val databaseId = app.getString(R.string.firestore_database_id)
-                val db = FirebaseFirestore.getInstance(databaseId)
-                NexusTcgViewModel(
-                    repository = NexusTcgRepository(db),
-                    currentUserId = currentUserId,
-                    currentUserName = currentUserName,
-                    boardSyncService = GameBoardSyncService(db),
-                    gameStateManager = FirestoreGameStateManager(db),
-                    eventLogService = FirestoreGameEventLogService(db)
-                )
+                if (isOfflineMode) {
+                    NexusTcgViewModel(
+                        repository = null,
+                        currentUserId = currentUserId,
+                        currentUserName = currentUserName,
+                        boardSyncService = null,
+                        gameStateManager = null,
+                        eventLogService = null,
+                        isOfflineMode = true
+                    )
+                } else {
+                    val app = checkNotNull(this[APPLICATION_KEY]) as Application
+                    val databaseId = app.getString(R.string.firestore_database_id)
+                    val db = FirebaseFirestore.getInstance(databaseId)
+                    NexusTcgViewModel(
+                        repository = NexusTcgRepository(db),
+                        currentUserId = currentUserId,
+                        currentUserName = currentUserName,
+                        boardSyncService = GameBoardSyncService(db),
+                        gameStateManager = FirestoreGameStateManager(db),
+                        eventLogService = FirestoreGameEventLogService(db),
+                        isOfflineMode = false
+                    )
+                }
             }
         }
     )
@@ -386,9 +421,13 @@ fun NexusTcgMainScreen(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = activeFormatBlueprint?.name ?: activeUiProfile.systemTitle,
+                                            text = if (isOfflineMode) {
+                                                "LOCAL OFFLINE • ${activeFormatBlueprint?.name ?: activeUiProfile.systemTitle}"
+                                            } else {
+                                                activeFormatBlueprint?.name ?: activeUiProfile.systemTitle
+                                            },
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = chameleonAccent,
+                                            color = if (isOfflineMode) RadiantGold else chameleonAccent,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -426,14 +465,22 @@ fun NexusTcgMainScreen(
                                 }
                                 IconButton(
                                     onClick = {
-                                        signOut(credentialManager = credentialManager, scope = scope)
+                                        if (isOfflineMode) {
+                                            onExitOfflineMode()
+                                        } else {
+                                            signOut(credentialManager = credentialManager, scope = scope)
+                                        }
                                     },
                                     modifier = Modifier.testTag("sign_out_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.Logout,
-                                        contentDescription = stringResource(id = R.string.sign_out),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        contentDescription = if (isOfflineMode) {
+                                            "Exit Offline Mode & Sign In"
+                                        } else {
+                                            stringResource(id = R.string.sign_out)
+                                        },
+                                        tint = if (isOfflineMode) RadiantGold else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             },
@@ -646,7 +693,7 @@ fun NexusTcgMainScreen(
                                                 attack21 = card.atk21,
                                                 defense21 = card.def21,
                                                 abilityText = "${card.pipCost} • ${card.ability}",
-                                                artResId = R.drawable.ic_launcher_foreground,
+                                                artResId = null,
                                                 cardOrigin = card.cardOrigin,
                                                 linkedCanonCardId = card.linkedCanonCardId,
                                                 splitOffSetId = parentPack?.splitOff?.splitOffId.orEmpty(),
